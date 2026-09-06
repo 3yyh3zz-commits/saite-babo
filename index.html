@@ -1,0 +1,329 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>커스텀 단어 빙고게임</title>
+    <style>
+        :root {
+            --bg-color: #1e1e24;
+            --card-bg: #2b2b36;
+            --text-primary: #f1f2f6;
+            --accent: #5865f2;
+            --accent-hover: #4752c4;
+            --bingo-checked: #2ed573;
+            --danger: #ff4757;
+            --border-color: #40404f;
+        }
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-primary);
+            margin: 0; padding: 20px;
+            display: flex; flex-direction: column; align-items: center;
+            min-height: 100vh;
+        }
+        h1 { margin-bottom: 25px; color: white; text-align: center; }
+
+        .container {
+            background-color: var(--card-bg);
+            width: 100%; max-width: 450px;
+            padding: 25px; border-radius: 12px;
+            border: 1px solid var(--border-color);
+            box-shadow: 0 8px 20px rgba(0,0,0,0.4);
+            margin-bottom: 20px; box-sizing: border-box;
+        }
+        input, textarea {
+            width: 100%; background: #1a1a21; border: 1px solid var(--border-color);
+            color: white; padding: 12px; border-radius: 6px; font-size: 14px; margin-bottom: 12px;
+            box-sizing: border-box; resize: vertical;
+        }
+        button {
+            background: var(--accent); color: white; border: none;
+            padding: 12px 20px; font-size: 15px; font-weight: bold;
+            border-radius: 6px; cursor: pointer; width: 100%; transition: 0.2s;
+        }
+        button:hover { background: var(--accent-hover); }
+
+        .screen { display: none; width: 100%; max-width: 450px; }
+        
+        .bingo-board {
+            display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; aspect-ratio: 1; margin-bottom: 15px;
+        }
+        .bingo-cell {
+            background: #1a1a21; border: 1px solid var(--border-color); border-radius: 6px;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 11px; font-weight: bold; text-align: center; cursor: pointer; padding: 4px;
+            user-select: none; transition: 0.1s; color: #dcdde1; word-break: break-all;
+        }
+        .bingo-cell:not(.checked):hover { background: #3d3d4e; }
+        .bingo-cell.checked { background: var(--bingo-checked); color: white; text-decoration: line-through; border-color: #26af5f; }
+
+        .status-bar {
+            display: flex; justify-content: space-between; margin-bottom: 15px; font-weight: bold; font-size: 15px;
+        }
+        .btn-secondary { background: #57606f; margin-top: 10px; }
+        .btn-secondary:hover { background: #747d8c; }
+        .btn-bingo { background: var(--danger); font-size: 16px; margin-top: 10px; display: none; animation: pulse 1s infinite; }
+        @keyframes pulse { 0% { transform: scale(1); } 50% { transform: scale(1.02); } 100% { transform: scale(1); } }
+
+        #game-over-overlay {
+            display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.85); z-index: 999;
+            justify-content: center; align-items: center; flex-direction: column; text-align: center; padding: 20px;
+        }
+    </style>
+</head>
+<body>
+
+    <h1>커스텀 단어 빙고게임</h1>
+
+    <!-- 1. 첫 화면 -->
+    <div class="container" id="mode-select-screen">
+        <h3>방 설정</h3>
+        <button onclick="showHostSetup()">방 만들고 링크 공유하기</button>
+    </div>
+
+    <!-- 2. 방장 설정 화면 -->
+    <div class="container screen" id="host-setup-screen">
+        <h3>방 만들기 (방장)</h3>
+        <label style="font-size: 13px; color: #a4b0be;">방장 닉네임</label>
+        <input type="text" id="host-nickname" placeholder="닉네임 입력">
+
+        <label style="font-size: 13px; color: #a4b0be;">목표 빙고 줄 수</label>
+        <input type="number" id="target-lines" value="3" min="1" max="12">
+        
+        <button onclick="createRoom()">방 링크 생성하기</button>
+        <button class="btn-secondary" onclick="backToMain()">뒤로 가기</button>
+    </div>
+
+    <!-- 3. 링크 공유 화면 -->
+    <div class="container screen" id="share-screen">
+        <h3>방 링크 생성 완료!</h3>
+        <p style="font-size: 13px; color: #a4b0be;">아래 링크를 복사해서 친구들에게 공유하세요. (방을 나가기 전까지 유지됩니다)</p>
+        <input type="text" id="share-link-input" readonly style="background: #111; color: #2ed573; text-align: center; font-weight: bold;">
+        <button onclick="copyLink()" style="margin-bottom: 10px;">링크 복사하기</button>
+        <button onclick="startMyGame()">나도 게임 참여하기</button>
+    </div>
+
+    <!-- 4. 참여자 입장 화면 (참여자가 직접 단어 입력) -->
+    <div class="container screen" id="guest-join-screen">
+        <h3>참여자 입장</h3>
+        <label style="font-size: 13px; color: #a4b0be;">내 닉네임</label>
+        <input type="text" id="guest-nickname" placeholder="닉네임 입력">
+
+        <label style="font-size: 13px; color: #a4b0be;">빙고 단어 입력 (25개 이상, 엔터/콤마 구분)</label>
+        <textarea id="guest-words" rows="5" placeholder="원하는 단어들을 직접 입력해주세요 (25개 이상)"></textarea>
+
+        <button onclick="joinGame()">내 단어로 게임 시작하기</button>
+    </div>
+
+    <!-- 5. 실제 게임 플레이 화면 -->
+    <div class="screen" id="game-screen">
+        <div class="container" style="max-width: 100%;">
+            <div class="status-bar">
+                <span id="player-title">빙고판</span>
+                <span id="bingo-status" style="color: var(--bingo-checked);">완성된 줄: 0줄</span>
+            </div>
+            <div class="bingo-board" id="board"></div>
+            <button class="btn-bingo" id="bingo-claim-btn" onclick="claimBingo()">🚨 BINGO 완성! 게임 끝내기 🚨</button>
+            <button class="btn-secondary" onclick="restartGame()" style="margin-top: 10px;">게임 다시 하기 (방 유지)</button>
+        </div>
+    </div>
+
+    <!-- 6. 게임 종료 오버레이 -->
+    <div id="game-over-overlay">
+        <h2 id="winner-text" style="color: var(--bingo-checked); margin-bottom: 10px;"></h2>
+        <p style="color: #a4b0be; margin-bottom: 20px;">다른 플레이어가 먼저 빙고를 완성했습니다!</p>
+        <button onclick="restartGame()" style="max-width: 200px; margin-bottom: 10px;">다음 판 시작하기</button>
+        <button class="btn-secondary" onclick="leaveRoom()" style="max-width: 200px; background: var(--danger);">방 나가기</button>
+    </div>
+
+    <script>
+        let myNickname = '';
+        let isHost = false;
+        let targetLines = 3;
+        let roomId = '';
+        let channel = null;
+        let currentBoardWords = [];
+
+        window.onload = function() {
+            const urlParams = new URLSearchParams(window.location.search);
+            roomId = urlParams.get('room');
+            const lines = urlParams.get('lines');
+
+            if (roomId && lines) {
+                targetLines = parseInt(lines) || 3;
+                // 방에 입장할 때 방이 유효한지 체크
+                const roomActive = localStorage.getItem('bingo_room_' + roomId);
+                if (!roomActive && !isHost) {
+                    alert('방장이 방을 나갔거나 존재하지 않는 방입니다.');
+                    window.location.href = window.location.pathname;
+                    return;
+                }
+                document.getElementById('mode-select-screen').style.display = 'none';
+                document.getElementById('guest-join-screen').style.display = 'block';
+            }
+        };
+
+        function showHostSetup() {
+            document.getElementById('mode-select-screen').style.display = 'none';
+            document.getElementById('host-setup-screen').style.display = 'block';
+        }
+
+        function backToMain() {
+            document.querySelectorAll('.screen').forEach(el => el.style.display = 'none');
+            document.getElementById('mode-select-screen').style.display = 'block';
+            window.history.replaceState({}, document.title, window.location.pathname);
+        }
+
+        function createRoom() {
+            const nick = document.getElementById('host-nickname').value.trim();
+            targetLines = parseInt(document.getElementById('target-lines').value) || 3;
+
+            if (!nick) { alert('방장 닉네임을 입력해주세요!'); return; }
+
+            myNickname = nick;
+            isHost = true;
+            roomId = Math.random().toString(36).substring(2, 8);
+
+            // 방 생성 상태를 로컬스토리지에 저장 (방장이 살아있는 동안 링크 유지)
+            localStorage.setItem('bingo_room_' + roomId, 'active');
+
+            const shareUrl = `${window.location.origin}${window.location.pathname}?room=${roomId}&lines=${targetLines}`;
+
+            document.getElementById('share-link-input').value = shareUrl;
+            document.getElementById('host-setup-screen').style.display = 'none';
+            document.getElementById('share-screen').style.display = 'block';
+        }
+
+        function copyLink() {
+            const input = document.getElementById('share-link-input');
+            input.select();
+            document.execCommand('copy');
+            alert('링크가 복사되었습니다!');
+        }
+
+        function startMyGame() {
+            document.getElementById('share-screen').style.display = 'none';
+            document.getElementById('guest-join-screen').style.display = 'block';
+            document.getElementById('guest-nickname').value = myNickname;
+        }
+
+        function joinGame() {
+            const nick = document.getElementById('guest-nickname').value.trim();
+            const rawText = document.getElementById('guest-words').value;
+            let words = rawText.split(/[\n,]+/).map(w => w.trim()).filter(w => w.length > 0);
+
+            if (!nick) { alert('닉네임을 입력해주세요!'); return; }
+            if (words.length < 25) { alert(`단어가 총 ${words.length}개입니다. 25개 이상 입력해주세요!`); return; }
+
+            myNickname = nick;
+            
+            words.sort(() => Math.random() - 0.5);
+            currentBoardWords = words.slice(0, 25);
+
+            document.getElementById('guest-join-screen').style.display = 'none';
+            initGame();
+        }
+
+        function initGame() {
+            channel = new BroadcastChannel('bingo_room_' + roomId);
+            channel.onmessage = function (event) {
+                if (event.data.type === 'GAME_OVER') {
+                    showGameOver(event.data.winner);
+                } else if (event.data.type === 'ROOM_CLOSED') {
+                    alert('방장이 방을 나갔습니다.');
+                    leaveRoom();
+                }
+            };
+
+            document.getElementById('game-over-overlay').style.display = 'none';
+            document.getElementById('game-screen').style.display = 'block';
+            document.getElementById('player-title').innerText = `${myNickname}님의 빙고판`;
+            renderBoard();
+        }
+
+        function renderBoard() {
+            const boardDiv = document.getElementById('board');
+            boardDiv.innerHTML = '';
+
+            let playerBoard = [...currentBoardWords].sort(() => Math.random() - 0.5);
+
+            playerBoard.forEach((word) => {
+                const cell = document.createElement('div');
+                cell.className = 'bingo-cell';
+                cell.innerText = word;
+
+                cell.addEventListener('click', () => {
+                    cell.classList.toggle('checked');
+                    checkBingoLogic();
+                });
+                boardDiv.appendChild(cell);
+            });
+        }
+
+        function checkBingoLogic() {
+            const cells = document.querySelectorAll('.bingo-cell');
+            let matrix = [];
+            for (let i = 0; i < 5; i++) {
+                let row = [];
+                for (let j = 0; j < 5; j++) {
+                    row.push(cells[i * 5 + j].classList.contains('checked'));
+                }
+                matrix.push(row);
+            }
+
+            let bingoCount = 0;
+            for (let i = 0; i < 5; i++) if (matrix[i].every(v => v)) bingoCount++;
+            for (let j = 0; j < 5; j++) if ([0,1,2,3,4].every(i => matrix[i][j])) bingoCount++;
+            if ([0,1,2,3,4].every(i => matrix[i][i])) bingoCount++;
+            if ([0,1,2,3,4].every(i => matrix[i][4-i])) bingoCount++;
+
+            document.getElementById('bingo-status').innerText = `완성된 줄: ${bingoCount}줄`;
+
+            const claimBtn = document.getElementById('bingo-claim-btn');
+            if (bingoCount >= targetLines) {
+                claimBtn.style.display = 'block';
+            } else {
+                claimBtn.style.display = 'none';
+            }
+        }
+
+        function claimBingo() {
+            if (channel) {
+                channel.postMessage({ type: 'GAME_OVER', winner: myNickname });
+            }
+            showGameOver(myNickname);
+        }
+
+        function showGameOver(winnerName) {
+            document.getElementById('game-over-overlay').style.display = 'flex';
+            document.getElementById('winner-text').innerText = `🎉 승자: ${winnerName}님! 🎉`;
+        }
+
+        // 게임이 끝나도 링크는 유지한 채 판만 리셋
+        function restartGame() {
+            if (channel) {
+                channel.postMessage({ type: 'RESTART' });
+            }
+            document.getElementById('game-over-overlay').style.display = 'none';
+            renderBoard();
+            document.getElementById('bingo-status').innerText = '완성된 줄: 0줄';
+            document.getElementById('bingo-claim-btn').style.display = 'none';
+        }
+
+        // 방장이 방을 나갈 때
+        function leaveRoom() {
+            if (isHost && roomId) {
+                localStorage.removeItem('bingo_room_' + roomId);
+                if (channel) {
+                    channel.postMessage({ type: 'ROOM_CLOSED' });
+                }
+            }
+            if (channel) channel.close();
+            window.location.href = window.location.pathname;
+        }
+    </script>
+</body>
+</html>
