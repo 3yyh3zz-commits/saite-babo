@@ -157,56 +157,75 @@
         let roomId = '';
         let currentBoardWords = [];
         let syncInterval = null;
-        let hasLeft = false;
 
         window.onload = async function() {
             const urlParams = new URLSearchParams(window.location.search);
             roomId = urlParams.get('room');
             const lines = urlParams.get('lines');
 
-            if (roomId && lines) {
-                targetLines = parseInt(lines) || 3;
-                document.getElementById('mode-select-screen').style.display = 'none';
-                
-                let nick = prompt('참여할 닉네임을 입력해주세요:');
-                while (!nick || !nick.trim()) {
-                    nick = prompt('올바른 닉네임을 입력해주세요:');
+            if (roomId) {
+                // 이미 참여했던 기록(로컬 스토리지)이 있는지 확인
+                const savedNick = localStorage.getItem(`bingo_nick_${roomId}`);
+                const savedRole = localStorage.getItem(`bingo_isHost_${roomId}`) === 'true';
+
+                if (savedNick) {
+                    // 새로고침 등으로 재접속한 경우
+                    myNickname = savedNick;
+                    isHost = savedRole;
+                    targetLines = parseInt(lines) || 3;
+
+                    document.getElementById('mode-select-screen').style.display = 'none';
+                    if (isHost) {
+                        const shareUrl = window.location.href;
+                        document.getElementById('share-link-input').value = shareUrl;
+                        document.getElementById('share-link-area').style.display = 'block';
+                        document.getElementById('host-start-btn').style.display = 'block';
+                    } else {
+                        document.getElementById('guest-waiting-msg').style.display = 'block';
+                    }
+                    document.getElementById('waiting-room-screen').style.display = 'block';
+
+                    // 데이터베이스에 내 상태 다시 등록/유지 확인
+                    await restoreMySession();
+                    startSyncLoop();
+                } else if (lines) {
+                    // 링크를 통해 처음 들어온 참여자
+                    targetLines = parseInt(lines) || 3;
+                    document.getElementById('mode-select-screen').style.display = 'none';
+                    
+                    let nick = prompt('참여할 닉네임을 입력해주세요:');
+                    while (!nick || !nick.trim()) {
+                        nick = prompt('올바른 닉네임을 입력해주세요:');
+                    }
+                    myNickname = nick.trim();
+                    isHost = false;
+
+                    localStorage.setItem(`bingo_nick_${roomId}`, myNickname);
+                    localStorage.setItem(`bingo_isHost_${roomId}`, 'false');
+
+                    document.getElementById('guest-waiting-msg').style.display = 'block';
+                    document.getElementById('waiting-room-screen').style.display = 'block';
+
+                    await joinRoomAsGuest();
+                    startSyncLoop();
                 }
-                myNickname = nick.trim();
-                isHost = false;
-
-                document.getElementById('guest-waiting-msg').style.display = 'block';
-                document.getElementById('waiting-room-screen').style.display = 'block';
-
-                await joinRoomAsGuest();
-                startSyncLoop();
             }
         };
 
-        // ★ 핵심: 참여자가 창을 닫거나 새로고침, 이탈할 때 즉시 서버 데이터에서 본인 닉네임 제거
-        window.addEventListener('beforeunload', () => {
-            removePlayerInstantly();
-        });
-
-        async function removePlayerInstantly() {
-            if (!roomId || !myNickname || hasLeft) return;
-            hasLeft = true;
-
-            try {
-                // 동기식 요청 또는 가벼운 통신을 위해 fetch를 활용하거나 Supabase 쿼리 실행
-                const { data } = await supabaseClient.from('rooms').select('players_status').eq('id', roomId).maybeSingle();
-                if (data && data.players_status) {
-                    let ps = data.players_status;
-                    delete ps[myNickname];
-
-                    if (Object.keys(ps).length === 0) {
-                        await supabaseClient.from('rooms').delete().eq('id', roomId);
-                    } else {
-                        await supabaseClient.from('rooms').update({ players_status: ps }).eq('id', roomId);
-                    }
+        async function restoreMySession() {
+            const { data } = await supabaseClient.from('rooms').select('*').eq('id', roomId).maybeSingle();
+            if (data) {
+                targetLines = data.target_lines || 3;
+                let playersStatus = data.players_status || {};
+                if (!(myNickname in playersStatus)) {
+                    playersStatus[myNickname] = false;
                 }
-            } catch (e) {
-                // 브라우저 종료 직전 비동기 예외 무시
+                await supabaseClient.from('rooms').update({ players_status: playersStatus }).eq('id', roomId);
+                updateWaitingRoomUI(playersStatus);
+
+                if (data.status === 'playing') {
+                    startTheGame();
+                }
             }
         }
 
@@ -216,7 +235,10 @@
         }
 
         function backToMain() {
-            removePlayerInstantly();
+            if (roomId) {
+                localStorage.removeItem(`bingo_nick_${roomId}`);
+                localStorage.removeItem(`bingo_isHost_${roomId}`);
+            }
             document.querySelectorAll('.screen').forEach(el => el.style.display = 'none');
             document.getElementById('mode-select-screen').style.display = 'block';
             if (syncInterval) clearInterval(syncInterval);
@@ -233,6 +255,9 @@
             isHost = true;
             roomId = Math.random().toString(36).substring(2, 8);
 
+            localStorage.setItem(`bingo_nick_${roomId}`, myNickname);
+            localStorage.setItem(`bingo_isHost_${roomId}`, 'true');
+
             const initialPlayersObj = {};
             initialPlayersObj[myNickname] = false; 
 
@@ -246,6 +271,9 @@
             }
 
             const shareUrl = `${window.location.origin}${window.location.pathname}?room=${roomId}&lines=${targetLines}`;
+
+            // 주소창을 방 링크로 깔끔하게 변경 (새로고침 대비)
+            window.history.replaceState({}, document.title, `?room=${roomId}&lines=${targetLines}`);
 
             document.getElementById('share-link-input').value = shareUrl;
             document.getElementById('share-link-area').style.display = 'block';
@@ -313,6 +341,7 @@
                 const { data, error } = await supabaseClient.from('rooms').select('*').eq('id', roomId).maybeSingle();
                 if (error || !data) {
                     alert('방이 종료되었거나 삭제되었습니다.');
+                    localStorage.clear();
                     window.location.href = window.location.pathname;
                     return;
                 }
@@ -332,7 +361,7 @@
                 if (data.status === 'waiting' && document.getElementById('waiting-room-screen').style.display !== 'block' && document.getElementById('game-screen').style.display === 'block') {
                     resetToWaitingRoomUI();
                 }
-            }, 1000); // 1초 간격 동기화
+            }, 1000);
         }
 
         function copyLink() {
