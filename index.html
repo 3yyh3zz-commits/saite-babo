@@ -266,7 +266,7 @@
                     const savedWords = localStorage.getItem(`bingo_words_${roomId}`);
                     if (savedWords) {
                         document.getElementById('my-words').value = savedWords;
-                        updateMyWordStatusOnly(false);
+                        window.updateMyWordStatusOnly(false);
                     }
 
                     if (isHost) {
@@ -323,19 +323,20 @@
             }
         }
 
-        function showHostSetup() {
+        // 전역 window 객체에 직접 할당하여 onclick 에러 원천 차단
+        window.showHostSetup = function() {
             document.getElementById('mode-select-screen').style.display = 'none';
             document.getElementById('host-setup-screen').style.display = 'block';
-        }
+        };
 
-        function backToMain() {
+        window.backToMain = function() {
             clearSessionData();
             document.querySelectorAll('.screen').forEach(el => el.style.display = 'none');
             document.getElementById('mode-select-screen').style.display = 'block';
             if (syncInterval) clearInterval(syncInterval);
             if (heartbeatInterval) clearInterval(heartbeatInterval);
             window.history.replaceState({}, document.title, window.location.pathname);
-        }
+        };
 
         async function clearSessionData() {
             if (!roomId || !myNickname || !supabaseClient) return;
@@ -354,7 +355,7 @@
             localStorage.removeItem(`bingo_words_${roomId}`);
         }
 
-        async function createRoom() {
+        window.createRoom = async function() {
             if (!supabaseClient) {
                 alert("데이터베이스 연결 초기화 중입니다. 잠시 후 다시 시도해주세요.");
                 return;
@@ -412,9 +413,9 @@
             updateWaitingRoomUI(initialPlayersObj);
             startSyncLoop();
             startHeartbeat();
-        }
+        };
 
-        async function updateRoomTopic() {
+        window.updateRoomTopic = async function() {
             if (!isHost || !supabaseClient) return;
             const newTopic = document.getElementById('room-topic-input').value.trim() || '자유 주제';
             const { error } = await supabaseClient.from('rooms').update({ topic: newTopic }).eq('id', roomId);
@@ -425,9 +426,9 @@
                 updateGameTopicDisplay(gameTopic);
                 alert('게임 주제가 변경되었습니다!');
             }
-        }
+        };
 
-        async function joinRoomWithNickname() {
+        window.joinRoomWithNickname = async function() {
             if (!supabaseClient) return;
             const nickInput = document.getElementById('guest-nickname').value.trim();
             if (!nickInput) {
@@ -476,7 +477,7 @@
             if (data.status === 'playing') {
                 startTheGame(data.current_clue);
             }
-        }
+        };
 
         function updateGameTopicDisplay(topic) {
             document.getElementById('game-topic-display').innerText = `🎯 주제: ${topic}`;
@@ -488,7 +489,7 @@
             return words.length >= 25;
         }
 
-        function updateMyWordStatusOnly(saveToLocal = true) {
+        window.updateMyWordStatusOnly = function(saveToLocal = true) {
             const rawText = document.getElementById('my-words').value;
             
             if (saveToLocal && roomId) {
@@ -508,7 +509,7 @@
                 statusIndicator.style.color = 'var(--danger)';
             }
             saveMyWordsToSupabase();
-        }
+        };
 
         async function saveMyWordsToSupabase() {
             if (!roomId || !myNickname || !supabaseClient) return;
@@ -606,7 +607,7 @@
             }, 1500);
         }
 
-        function copyLink() {
+        window.copyLink = function() {
             const input = document.getElementById('share-link-input');
             input.select();
             if (navigator.clipboard && navigator.clipboard.writeText) {
@@ -620,7 +621,7 @@
                 document.execCommand('copy');
                 alert('초대 링크가 복사되었습니다!');
             }
-        }
+        };
 
         function updateWaitingRoomUI(playersStatus) {
             const listDiv = document.getElementById('player-list-box');
@@ -696,7 +697,7 @@
             return available[Math.floor(Math.random() * available.length)];
         }
 
-        async function startHostGame() {
+        window.startHostGame = async function() {
             if (!isHost || !supabaseClient) return;
             if (!checkIsReady()) {
                 alert('본인의 단어가 25개 미만입니다!');
@@ -718,9 +719,9 @@
                 current_clue: firstClue,
                 used_clues: [firstClue]
             }).eq('id', roomId);
-        }
+        };
 
-        async function nextClue() {
+        window.nextClue = async function() {
             if (!isHost || !supabaseClient) return;
 
             const { data } = await supabaseClient.from('rooms').select('*').eq('id', roomId).maybeSingle();
@@ -739,7 +740,7 @@
                 current_clue: nextC,
                 used_clues: usedClues
             }).eq('id', roomId);
-        }
+        };
 
         function startTheGame(clue) {
             const rawText = document.getElementById('my-words').value;
@@ -818,7 +819,7 @@
             }
         }
 
-        async function claimBingo() {
+        window.claimBingo = async function() {
             if (!supabaseClient) return;
             await supabaseClient.from('rooms').update({ 
                 status: 'gameover', 
@@ -826,7 +827,7 @@
             }).eq('id', roomId);
             
             showGameOver(myNickname);
-        }
+        };
 
         async function showGameOver(winnerName) {
             document.getElementById('game-over-overlay').style.display = 'flex';
@@ -850,7 +851,7 @@
             }
         }
 
-        async function returnToWaitingRoom() {
+        window.returnToWaitingRoom = async function() {
             document.getElementById('game-over-overlay').style.display = 'none';
             document.getElementById('game-screen').style.display = 'none';
             
@@ -880,7 +881,7 @@
             if (isHost) {
                 document.getElementById('host-start-btn').style.display = 'block';
             }
-        }
+        };
 
         function resetToWaitingRoomUI() {
             document.getElementById('game-over-overlay').style.display = 'none';
@@ -894,19 +895,6 @@
             document.getElementById('waiting-room-screen').style.display = 'block';
             document.getElementById('guest-waiting-msg').style.display = 'block';
         }
-
-        // HTML onclick 이벤트에서 정상 호출되도록 전역 객체(window)에 함수 명시적 바인딩
-        window.showHostSetup = showHostSetup;
-        window.createRoom = createRoom;
-        window.backToMain = backToMain;
-        window.joinRoomWithNickname = joinRoomWithNickname;
-        window.updateRoomTopic = updateRoomTopic;
-        window.copyLink = copyLink;
-        window.updateMyWordStatusOnly = updateMyWordStatusOnly;
-        window.startHostGame = startHostGame;
-        window.nextClue = nextClue;
-        window.claimBingo = claimBingo;
-        window.returnToWaitingRoom = returnToWaitingRoom;
     </script>
 </body>
 </html>
