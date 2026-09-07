@@ -298,12 +298,6 @@
             localStorage.removeItem(`bingo_isHost_${roomId}`);
         }
 
-        window.addEventListener('beforeunload', () => {
-            if (!roomId || !myNickname) return;
-            localStorage.removeItem(`bingo_nick_${roomId}`);
-            localStorage.removeItem(`bingo_isHost_${roomId}`);
-        });
-
         async function createRoom() {
             const nick = document.getElementById('host-nickname').value.trim();
             targetLines = parseInt(document.getElementById('target-lines-input').value) || 3;
