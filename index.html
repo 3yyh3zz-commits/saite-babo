@@ -139,7 +139,6 @@
     <div id="game-over-overlay">
         <h2 id="winner-text" style="color: var(--bingo-checked); margin-bottom: 10px;"></h2>
         <p id="winner-sub-text" style="color: #a4b0be; margin-bottom: 20px;">누군가 빙고를 완성했습니다!</p>
-        <!-- 방장에게만 보이는 '다시하기' 버튼 -->
         <button id="game-over-btn" onclick="returnToWaitingRoom()" style="max-width: 250px; background: var(--bingo-checked); display: none;">다시하기</button>
     </div>
 
@@ -180,12 +179,40 @@
             }
         };
 
+        // 페이지를 떠나거나 새로고침/창을 닫을 때 목록에서 본인 제거
+        window.addEventListener('beforeunload', function () {
+            if (roomId && myNickname) {
+                navigator.sendBeacon ? true : removePlayerSync(); // 안정적인 비동기 요청 처리 용도 겸용
+                // 동기적으로 데이터를 지우기 위한 fetch 활용 (keepalive)
+                const url = `${SUPABASE_URL}/rest/v1/rooms?id=eq.${roomId}`;
+                // 서버 부하 및 안정성을 위해 실시간 주기 루프나 leave 함수 호출
+                leaveRoomCleanup();
+            }
+        });
+
+        async function leaveRoomCleanup() {
+            if (!roomId || !myNickname) return;
+            const { data } = await supabaseClient.from('rooms').select('players_status, status').eq('id', roomId).maybeSingle();
+            if (data && data.players_status) {
+                let ps = data.players_status;
+                delete ps[myNickname];
+                
+                // 만약 방장이 나가고 방에 사람이 아예 없으면 방 삭제 또는 처리 가능
+                if (Object.keys(ps).length === 0) {
+                    await supabaseClient.from('rooms').delete().eq('id', roomId);
+                } else {
+                    await supabaseClient.from('rooms').update({ players_status: ps }).eq('id', roomId);
+                }
+            }
+        }
+
         function showHostSetup() {
             document.getElementById('mode-select-screen').style.display = 'none';
             document.getElementById('host-setup-screen').style.display = 'block';
         }
 
         function backToMain() {
+            leaveRoomCleanup();
             document.querySelectorAll('.screen').forEach(el => el.style.display = 'none');
             document.getElementById('mode-select-screen').style.display = 'block';
             if (syncInterval) clearInterval(syncInterval);
@@ -280,7 +307,12 @@
             syncInterval = setInterval(async () => {
                 if (!roomId) return;
                 const { data, error } = await supabaseClient.from('rooms').select('*').eq('id', roomId).maybeSingle();
-                if (error || !data) return;
+                if (error || !data) {
+                    // 방이 사라졌거나 폭파된 경우 처리
+                    alert('방이 종료되었거나 삭제되었습니다.');
+                    window.location.href = window.location.pathname;
+                    return;
+                }
 
                 if (data.players_status) {
                     updateWaitingRoomUI(data.players_status);
@@ -331,7 +363,7 @@
 
                 const item = document.createElement('div');
                 item.className = 'player-item';
-                item.innerHTML = `<span>👤 ${name}</span> <span style="font-size: 12px; color: ${isReady ? 'var(--bingo-checked)' : 'var(--danger)'};">${isReady ? '단어 작성 완료 ✅' : '작성 중... ❌'}</span>`;
+                item.innerHTML = `👤 ${name} <span style="font-size: 12px; color: ${isReady ? 'var(--bingo-checked)' : 'var(--danger)'};">${isReady ? '단어 작성 완료 ✅' : '작성 중... ❌'}</span>`;
                 listDiv.appendChild(item);
             });
 
