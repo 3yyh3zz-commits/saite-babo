@@ -86,10 +86,11 @@
 
     <h1>실시간 커스텀 단어 빙고</h1>
 
+    <!-- 메인 화면 ('방 참여하기' 버튼 삭제됨) -->
     <div class="container" id="mode-select-screen">
-        <h3>게임 모드 선택</h3>
+        <h3>게임 모드</h3>
         <button onclick="showHostSetup()">방 만들기</button>
-        <button class="btn-secondary" onclick="showJoinSetup()">방 참여하기</button>
+        <p style="font-size: 12px; color: #a4b0be; text-align: center; margin-top: 5px;">참여자는 공유받은 링크를 통해 접속할 수 있습니다.</p>
     </div>
 
     <div class="container screen" id="host-setup-screen">
@@ -101,18 +102,6 @@
         <input type="number" id="target-lines-input" value="3" min="1" max="12">
         
         <button onclick="createRoom()">랜덤 링크 생성 및 방 들어가기</button>
-        <button class="btn-secondary" onclick="backToMain()">뒤로 가기</button>
-    </div>
-
-    <div class="container screen" id="join-setup-screen">
-        <h3>방 참여하기</h3>
-        <label style="font-size: 13px; color: #a4b0be;">내 닉네임</label>
-        <input type="text" id="guest-nickname" placeholder="닉네임 입력">
-
-        <label style="font-size: 13px; color: #a4b0be;">초대 링크 또는 방 코드</label>
-        <input type="text" id="invite-link-input" placeholder="복사한 링크 또는 방 코드를 붙여넣으세요">
-        
-        <button onclick="enterRoomByLink()">대기방 입장하기</button>
         <button class="btn-secondary" onclick="backToMain()">뒤로 가기</button>
     </div>
 
@@ -166,7 +155,6 @@
         let roomId = '';
         let currentBoardWords = [];
         let syncInterval = null;
-        let roomDataCache = null;
 
         window.onload = async function() {
             const urlParams = new URLSearchParams(window.location.search);
@@ -197,11 +185,6 @@
             document.getElementById('host-setup-screen').style.display = 'block';
         }
 
-        function showJoinSetup() {
-            document.getElementById('mode-select-screen').style.display = 'none';
-            document.getElementById('join-setup-screen').style.display = 'block';
-        }
-
         function backToMain() {
             document.querySelectorAll('.screen').forEach(el => el.style.display = 'none');
             document.getElementById('mode-select-screen').style.display = 'block';
@@ -220,7 +203,7 @@
             roomId = Math.random().toString(36).substring(2, 8);
 
             const initialPlayersObj = {};
-            initialPlayersObj[myNickname] = false; // 단어 미작성 상태로 시작
+            initialPlayersObj[myNickname] = false; 
 
             const { error } = await supabaseClient.from('rooms').insert([
                 { id: roomId, status: 'waiting', target_lines: targetLines, players_status: initialPlayersObj }
@@ -244,42 +227,6 @@
             startSyncLoop();
         }
 
-        async function enterRoomByLink() {
-            const nick = document.getElementById('guest-nickname').value.trim();
-            let linkInput = document.getElementById('invite-link-input').value.trim();
-
-            if (!nick) { alert('닉네임을 입력해주세요!'); return; }
-            if (!linkInput) { alert('초대 링크나 방 코드를 입력해주세요!'); return; }
-
-            myNickname = nick;
-            isHost = false;
-
-            if (linkInput.includes('room=')) {
-                try {
-                    const urlObj = new URL(linkInput);
-                    roomId = urlObj.searchParams.get('room');
-                    const linesParam = urlObj.searchParams.get('lines');
-                    if (linesParam) targetLines = parseInt(linesParam);
-                } catch (e) {
-                    roomId = linkInput.split('room=')[1].split('&')[0];
-                }
-            } else {
-                roomId = linkInput;
-            }
-
-            if (!roomId) {
-                alert('유효하지 않은 링크 또는 방 코드입니다.');
-                return;
-            }
-
-            document.getElementById('join-setup-screen').style.display = 'none';
-            document.getElementById('guest-waiting-msg').style.display = 'block';
-            document.getElementById('waiting-room-screen').style.display = 'block';
-
-            await joinRoomAsGuest();
-            startSyncLoop();
-        }
-
         async function joinRoomAsGuest() {
             const { data, error } = await supabaseClient.from('rooms').select('*').eq('id', roomId).maybeSingle();
             
@@ -299,11 +246,10 @@
             updateWaitingRoomUI(playersStatus);
 
             if (data.status === 'playing') {
-                startTheGame(data);
+                startTheGame();
             }
         }
 
-        // 단어 입력할 때마다 실시간으로 글자 수 체크 및 서버에 완료 여부 반영
         async function saveMyWords() {
             const rawText = document.getElementById('my-words').value;
             let words = rawText.split(/[\n,]+/).map(w => w.trim()).filter(w => w.length > 0);
@@ -319,7 +265,6 @@
                 statusIndicator.style.color = 'var(--danger)';
             }
 
-            // 서버의 players_status 업데이트
             if (roomId && myNickname) {
                 const { data } = await supabaseClient.from('rooms').select('players_status').eq('id', roomId).maybeSingle();
                 if (data && data.players_status) {
@@ -336,18 +281,15 @@
                 if (!roomId) return;
                 const { data, error } = await supabaseClient.from('rooms').select('*').eq('id', roomId).maybeSingle();
                 if (error || !data) return;
-                roomDataCache = data;
 
                 if (data.players_status) {
                     updateWaitingRoomUI(data.players_status);
                 }
 
-                // 게임 시작 감지
                 if (data.status === 'playing' && document.getElementById('game-screen').style.display !== 'block') {
-                    startTheGame(data);
+                    startTheGame();
                 }
 
-                // 게임 종료 감지
                 if (data.status === 'gameover' && data.winner && document.getElementById('game-over-overlay').style.display !== 'flex') {
                     showGameOver(data.winner);
                 }
@@ -389,7 +331,7 @@
                 listDiv.appendChild(item);
             });
 
-            // 방장 시작 버튼 상태 제어
+            // 방장 시작 버튼 상태 제어 (참여자 포함 모두가 25개 채워야 활성화)
             if (isHost) {
                 const startBtn = document.getElementById('host-start-btn');
                 if (allReady && playerNames.length > 0) {
@@ -403,7 +345,6 @@
         }
 
         async function startHostGame() {
-            // 방장도 단어 작성 확인
             const rawText = document.getElementById('my-words').value;
             let words = rawText.split(/[\n,]+/).map(w => w.trim()).filter(w => w.length > 0);
             if (words.length < 25) {
@@ -414,7 +355,7 @@
             await supabaseClient.from('rooms').update({ status: 'playing', winner: null }).eq('id', roomId);
         }
 
-        function startTheGame(data) {
+        function startTheGame() {
             const rawText = document.getElementById('my-words').value;
             let words = rawText.split(/[\n,]+/).map(w => w.trim()).filter(w => w.length > 0);
 
@@ -425,7 +366,6 @@
             words.sort(() => Math.random() - 0.5);
             currentBoardWords = words.slice(0, 25);
 
-            // 화면 전환
             document.getElementById('game-over-overlay').style.display = 'none';
             document.getElementById('waiting-room-screen').style.display = 'none';
             document.getElementById('game-screen').style.display = 'block';
@@ -492,25 +432,27 @@
 
         function showGameOver(winnerName) {
             document.getElementById('game-over-overlay').style.display = 'flex';
-            document.getElementById('winner-text').innerText = `🎉 승자: ${winnerName}님! 🎉`;
+            
+            // 승리한 본인 화면에는 '승리 추카!!' 문구 출력
+            if (winnerName === myNickname) {
+                document.getElementById('winner-text').innerText = `🎉 승리 추카!! 🎉`;
+            } else {
+                document.getElementById('winner-text').innerText = `🎉 승자: ${winnerName}님! 🎉`;
+            }
         }
 
-        // 게임 종료 후 대기실로 다시 돌아가기 (방 유지)
         async function returnToWaitingRoom() {
             document.getElementById('game-over-overlay').style.display = 'none';
             document.getElementById('game-screen').style.display = 'none';
             
-            // 내 단어 준비 상태를 다시 미완료(false) 혹은 기존 유지 상태로 변경하고 대기실 화면 열기
             if (roomId) {
                 const { data } = await supabaseClient.from('rooms').select('players_status').eq('id', roomId).maybeSingle();
                 if (data && data.players_status) {
                     let ps = data.players_status;
-                    // 현재 내 단어 입력창의 글자 수에 맞춰 상태 갱신
                     const rawText = document.getElementById('my-words').value;
                     let words = rawText.split(/[\n,]+/).map(w => w.trim()).filter(w => w.length > 0);
                     ps[myNickname] = (words.length >= 25);
 
-                    // 방장인 경우 대기실 상태로 서버 리셋
                     if (isHost) {
                         await supabaseClient.from('rooms').update({ 
                             status: 'waiting', 
