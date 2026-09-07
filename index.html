@@ -160,6 +160,14 @@
     <div class="screen" id="game-screen">
         <div class="container" style="max-width: 100%;">
             <div id="game-topic-display" style="font-size: 13px; color: #a4b0be; margin-bottom: 8px; text-align: center;">주제: -</div>
+            
+            <!-- 단어 제시 카드 영역 -->
+            <div style="background: #1a1a21; border: 1px solid var(--border-color); border-radius: 8px; padding: 15px; text-align: center; margin-bottom: 15px;">
+                <p style="font-size: 12px; color: #a4b0be; margin: 0 0 5px 0;">현재 제시어</p>
+                <h2 id="current-clue-display" style="color: var(--bingo-checked); margin: 0; font-size: 24px;">준비 중...</h2>
+                <button id="next-clue-btn" onclick="nextClue()" style="display: none; margin-top: 12px; background: var(--accent); margin-bottom: 0;">➡️ 다음 제시어 뽑기</button>
+            </div>
+
             <div class="status-bar">
                 <span id="player-title">빙고판</span>
                 <span id="bingo-status" style="color: var(--bingo-checked);">완성된 줄: 0줄</span>
@@ -263,7 +271,7 @@
                 updateWaitingRoomUI(playersStatus);
 
                 if (data.status === 'playing') {
-                    startTheGame();
+                    startTheGame(data.current_clue);
                 }
             }
         }
@@ -324,7 +332,8 @@
                     topic: gameTopic,
                     target_lines: targetLines, 
                     players_status: initialPlayersObj,
-                    heartbeats: initialHeartbeats 
+                    heartbeats: initialHeartbeats,
+                    current_clue: '시작 대기 중'
                 }
             ]);
 
@@ -409,7 +418,7 @@
             startHeartbeat();
 
             if (data.status === 'playing') {
-                startTheGame();
+                startTheGame(data.current_clue);
             }
         }
 
@@ -510,8 +519,13 @@
                     updateWaitingRoomUI(playersStatus);
                 }
 
+                // 현재 제시어 업데이트 반영
+                if (data.current_clue) {
+                    document.getElementById('current-clue-display').innerText = data.current_clue;
+                }
+
                 if (data.status === 'playing' && document.getElementById('game-screen').style.display !== 'block') {
-                    startTheGame();
+                    startTheGame(data.current_clue);
                 }
 
                 if (data.status === 'gameover' && data.winner && document.getElementById('game-over-overlay').style.display !== 'flex') {
@@ -577,10 +591,33 @@
                 return;
             }
 
-            await supabaseClient.from('rooms').update({ status: 'playing', winner: null }).eq('id', roomId);
+            // 첫 번째 제시어 선정 (내 단어나 주제 기반 키워드 중 무작위)
+            const rawText = document.getElementById('my-words').value;
+            let words = rawText.split(/[\n,]+/).map(w => w.trim()).filter(w => w.length > 0);
+            if (words.length === 0) words = [gameTopic];
+            const firstClue = words[Math.floor(Math.random() * words.length)];
+
+            await supabaseClient.from('rooms').update({ 
+                status: 'playing', 
+                winner: null,
+                current_clue: firstClue 
+            }).eq('id', roomId);
         }
 
-        function startTheGame() {
+        async function nextClue() {
+            if (!isHost) return;
+            const rawText = document.getElementById('my-words').value;
+            let words = rawText.split(/[\n,]+/).map(w => w.trim()).filter(w => w.length > 0);
+            if (words.length === 0) words = [gameTopic];
+            
+            const randomClue = words[Math.floor(Math.random() * words.length)];
+
+            await supabaseClient.from('rooms').update({ 
+                current_clue: randomClue 
+            }).eq('id', roomId);
+        }
+
+        function startTheGame(clue) {
             const rawText = document.getElementById('my-words').value;
             let words = rawText.split(/[\n,]+/).map(w => w.trim()).filter(w => w.length > 0);
 
@@ -595,6 +632,17 @@
             document.getElementById('waiting-room-screen').style.display = 'none';
             document.getElementById('game-screen').style.display = 'block';
             document.getElementById('player-title').innerText = `${myNickname}님의 빙고판`;
+            
+            if (clue) {
+                document.getElementById('current-clue-display').innerText = clue;
+            }
+
+            if (isHost) {
+                document.getElementById('next-clue-btn').style.display = 'block';
+            } else {
+                document.getElementById('next-clue-btn').style.display = 'none';
+            }
+
             renderBoard();
         }
 
@@ -694,7 +742,8 @@
                     await supabaseClient.from('rooms').update({ 
                         status: 'waiting', 
                         winner: null,
-                        players_status: ps 
+                        players_status: ps,
+                        current_clue: '시작 대기 중'
                     }).eq('id', roomId);
                 }
             }
