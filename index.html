@@ -102,11 +102,11 @@
         <label style="font-size: 13px; color: #a4b0be;">목표 빙고 줄 수</label>
         <input type="number" id="target-lines" value="3" min="1" max="12">
         
-        <button onclick="createRoom()">랜덤 링크 생성 및 방 만들기</button>
+        <button onclick="createRoom()">랜덤 링크 생성 및 방 들어가기</button>
         <button class="btn-secondary" onclick="backToMain()">뒤로 가기</button>
     </div>
 
-    <!-- 3. 참여자 입장 입력 화면 (링크 입력 모드) -->
+    <!-- 3. 참여자 입장 입력 화면 -->
     <div class="container screen" id="join-setup-screen">
         <h3>방 참여하기</h3>
         <label style="font-size: 13px; color: #a4b0be;">내 닉네임</label>
@@ -174,7 +174,6 @@
         let currentBoardWords = [];
 
         window.onload = async function() {
-            // URL 파라미터로 바로 접속한 경우 자동 참여 처리 지원
             const urlParams = new URLSearchParams(window.location.search);
             roomId = urlParams.get('room');
             const lines = urlParams.get('lines');
@@ -224,12 +223,13 @@
             isHost = true;
             roomId = Math.random().toString(36).substring(2, 8);
 
-            const { error } = await supabaseClient.from('rooms').insert([
+            // upsert를 사용하여 기존 데이터 충돌 방지 및 안전한 저장
+            const { error } = await supabaseClient.from('rooms').upsert([
                 { id: roomId, status: 'waiting', target_lines: targetLines, players: [myNickname] }
             ]);
 
             if (error) {
-                alert('방 생성 실패: Supabase 테이블 설정을 확인해주세요.');
+                alert('방 생성 실패: Supabase 설정이나 테이블(rooms) 상태를 확인해주세요.\n(에러: ' + error.message + ')');
                 return;
             }
 
@@ -256,7 +256,6 @@
             myNickname = nick;
             isHost = false;
 
-            // 링크에서 room 파라미터 추출 또는 순수 방 코드 입력 대응
             if (linkInput.includes('room=')) {
                 try {
                     const urlObj = new URL(linkInput);
@@ -267,7 +266,7 @@
                     roomId = linkInput.split('room=')[1].split('&')[0];
                 }
             } else {
-                roomId = linkInput; // 코페만 입력한 경우
+                roomId = linkInput;
             }
 
             if (!roomId) {
