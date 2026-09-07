@@ -126,7 +126,7 @@
         <label style="font-size: 13px; color: #a4b0be;">참여한 플레이어 목록</label>
         <div class="player-list" id="player-list-box"></div>
 
-        <div style="margin-top: 15px;">
+        <div style="margin-top: 15px;" id="host-word-box">
             <label style="font-size: 13px; color: #a4b0be;">내 빙고 단어 입력 (25개 이상, 엔터/콤마 구분)</label>
             <textarea id="my-words" rows="4" placeholder="원하는 단어들을 직접 입력해주세요 (25개 이상)"></textarea>
         </div>
@@ -216,13 +216,12 @@
             isHost = true;
             roomId = Math.random().toString(36).substring(2, 8);
 
-            // 데이터 삽입 시도
             const { error } = await supabaseClient.from('rooms').insert([
                 { id: roomId, status: 'waiting', target_lines: targetLines, players: [myNickname] }
             ]);
 
             if (error) {
-                alert('방 생성 오류 발생!\nSupabase 대시보드에서 "rooms" 테이블과 컬럼(id, status, target_lines, players, winner)이 정확히 있는지, RLS가 꺼져있는지 확인해주세요.\n\n에러내용: ' + error.message);
+                alert('방 생성 오류: ' + error.message);
                 return;
             }
 
@@ -276,11 +275,10 @@
         }
 
         async function joinRoomAsGuest() {
-            // 방 존재 여부 확인
             const { data, error } = await supabaseClient.from('rooms').select('*').eq('id', roomId).maybeSingle();
             
             if (error || !data) {
-                alert('서버에서 방을 찾을 수 없습니다. (방장이 방을 만들 때 데이터 저장이 차단되었거나 방 번호가 잘못되었습니다.)\n상세에러: ' + (error ? error.message : '데이터 없음'));
+                alert('서버에서 방을 찾을 수 없습니다.');
                 window.location.href = window.location.pathname;
                 return;
             }
@@ -292,7 +290,7 @@
                 players.push(myNickname);
                 const { error: updateError } = await supabaseClient.from('rooms').update({ players: players }).eq('id', roomId);
                 if (updateError) {
-                    console.error('플레이어 목록 업데이트 실패:', updateError.message);
+                    console.error('플레이어 추가 권한 에러:', updateError.message);
                 }
             }
             updatePlayerListUI(players);
@@ -320,7 +318,7 @@
                 if (data.status === 'gameover' && data.winner) {
                     showGameOver(data.winner);
                 }
-            }, 2000);
+            }, 1500);
         }
 
         function copyLink() {
@@ -364,6 +362,7 @@
         }
 
         function startTheGame() {
+            // 참여자도 시작할 때 단어 입력칸이 비어있다면 임의 단어 25개 생성 방지용 체크
             const rawText = document.getElementById('my-words').value;
             let words = rawText.split(/[\n,]+/).map(w => w.trim()).filter(w => w.length > 0);
 
