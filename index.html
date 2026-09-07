@@ -144,7 +144,7 @@
 
     <script>
         const SUPABASE_URL = 'https://mlazabosisxkhnsjvwqo.supabase.co';
-        const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1sYXphYm9zaXN4a2huc2p2d3FvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODg3ODU1MjEsImV4cCI6MjEwNDM2MTUyMX0.RAXsRPOmPJ51nIGw1P1-1xU2gQzLD-Jeajg8JuUKgqk';
+        const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1sYXazYm9zaXN4a2huc2p2d3FvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODg3ODU1MjEsImV4cCI6MjEwNDM2MTUyMX0.RAXsRPOmPJ51nIGw1P1-1xU2gQzLD-Jeajg8JuUKgqk';
 
         const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
@@ -154,7 +154,7 @@
         let roomId = '';
         let currentBoardWords = [];
         let syncInterval = null;
-        let isLeaving = false; // 중복 실행 방지
+        let hasLeft = false;
 
         window.onload = async function() {
             const urlParams = new URLSearchParams(window.location.search);
@@ -180,25 +180,30 @@
             }
         };
 
-        // 브라우저를 닫거나 새로고침 할 때 작동
-        window.addEventListener('beforeunload', function () {
-            leaveRoomCleanup();
+        // 창을 닫거나 새로고침할 때 즉시 목록에서 제거 실행
+        window.addEventListener('beforeunload', () => {
+            removePlayerInstantly();
         });
 
-        async function leaveRoomCleanup() {
-            if (!roomId || !myNickname || isLeaving) return;
-            isLeaving = true;
+        async function removePlayerInstantly() {
+            if (!roomId || !myNickname || hasLeft) return;
+            hasLeft = true;
 
-            const { data } = await supabaseClient.from('rooms').select('players_status').eq('id', roomId).maybeSingle();
-            if (data && data.players_status) {
-                let ps = data.players_status;
-                delete ps[myNickname];
+            try {
+                // 최신 상태를 가져와서 내 닉네임만 삭제
+                const { data } = await supabaseClient.from('rooms').select('players_status').eq('id', roomId).maybeSingle();
+                if (data && data.players_status) {
+                    let ps = data.players_status;
+                    delete ps[myNickname];
 
-                if (Object.keys(ps).length === 0) {
-                    await supabaseClient.from('rooms').delete().eq('id', roomId);
-                } else {
-                    await supabaseClient.from('rooms').update({ players_status: ps }).eq('id', roomId);
+                    if (Object.keys(ps).length === 0) {
+                        await supabaseClient.from('rooms').delete().eq('id', roomId);
+                    } else {
+                        await supabaseClient.from('rooms').update({ players_status: ps }).eq('id', roomId);
+                    }
                 }
+            } catch (e) {
+                // 브라우저 종료 직전 비동기 통신 유지를 위한 보조 처리
             }
         }
 
@@ -208,7 +213,7 @@
         }
 
         function backToMain() {
-            leaveRoomCleanup();
+            removePlayerInstantly();
             document.querySelectorAll('.screen').forEach(el => el.style.display = 'none');
             document.getElementById('mode-select-screen').style.display = 'block';
             if (syncInterval) clearInterval(syncInterval);
@@ -324,7 +329,7 @@
                 if (data.status === 'waiting' && document.getElementById('waiting-room-screen').style.display !== 'block' && document.getElementById('game-screen').style.display === 'block') {
                     resetToWaitingRoomUI();
                 }
-            }, 1500);
+            }, 1000); // 1초 간격으로 빠르게 동기화 반영
         }
 
         function copyLink() {
