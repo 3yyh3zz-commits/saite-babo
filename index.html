@@ -363,7 +363,7 @@
 
         async function updateRoomTopic() {
             if (!isHost) return;
-            const newTopic = document.getElementById('room-topic-input'].value.trim() || '자유 주제';
+            const newTopic = document.getElementById('room-topic-input').value.trim() || '자유 주제';
             const { error } = await supabaseClient.from('rooms').update({ topic: newTopic }).eq('id', roomId);
             if (error) {
                 alert('주제 업데이트 실패: ' + error.message);
@@ -557,7 +557,6 @@
 
         function updateWaitingRoomUI(playersStatus) {
             const listDiv = document.getElementById('player-list-box');
-            listDiv.innerHTML = {};
             listDiv.innerHTML = '';
             
             let allReady = true;
@@ -594,7 +593,6 @@
                 return;
             }
 
-            // 모든 보드 단어를 합쳐서 주제 연관 검증 필터링 (간단히 키워드 포함 여부 또는 전체 수집)
             const rawText = document.getElementById('my-words').value;
             let words = rawText.split(/[\n,]+/).map(w => w.trim()).filter(w => w.length > 0);
             
@@ -613,16 +611,13 @@
         async function nextClue() {
             if (!isHost) return;
 
-            // 최신 room 상태 가져오기 (이미 사용된 제시어 목록 확인 위함)
             const { data } = await supabaseClient.from('rooms').select('used_clues').eq('id', roomId).maybeSingle();
             let usedClues = data && data.used_clues ? data.used_clues : [];
 
-            // 내 화면에 적힌 단어들 기준
             const rawText = document.getElementById('my-words').value;
             let words = rawText.split(/[\n,]+/).map(w => w.trim()).filter(w => w.length > 0);
             if (words.length === 0) words = [gameTopic];
 
-            // 이미 나왔던 제시어(usedClues)를 제외한 단어 필터링
             let availableWords = words.filter(w => !usedClues.includes(w));
 
             if (availableWords.length === 0) {
