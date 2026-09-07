@@ -225,7 +225,6 @@
             }
             if (window.GoogleGenAI) {
                 try {
-                    // 제공된 Gemini API 키 설정
                     genAIClient = new window.GoogleGenAI({ apiKey: "AIzaSyD-aL2WfS6G_8jX4v9K2p3L1m5N7q0" });
                 } catch (e) {
                     console.error("Gemini 생성 오류:", e);
@@ -417,7 +416,7 @@
 
         async function updateRoomTopic() {
             if (!isHost || !supabaseClient) return;
-            const newTopic = document.getElementById('room-topic-input'].value.trim() || '자유 주제';
+            const newTopic = document.getElementById('room-topic-input').value.trim() || '자유 주제';
             const { error } = await supabaseClient.from('rooms').update({ topic: newTopic }).eq('id', roomId);
             if (error) {
                 alert('주제 업데이트 실패: ' + error.message);
@@ -660,7 +659,6 @@
             Object.values(playerWordsObj).forEach(arr => {
                 if (Array.isArray(arr)) allWords.push(...arr);
             });
-            // 중복 제거
             allWords = [...new Set(allWords)];
 
             let usedClues = roomData.used_clues || [];
@@ -668,7 +666,6 @@
 
             if (available.length === 0) return null;
 
-            // 만약 Gemini 클라이언트가 있고 주제가 지정되어 있다면 AI 필터링 수행
             if (genAIClient && gameTopic && gameTopic !== '자유 주제') {
                 try {
                     const model = genAIClient.getGenerativeModel({ model: 'gemini-2.5-flash' });
@@ -680,4 +677,236 @@
 
                     const result = await model.generateContent(prompt);
                     let text = result.response.text().trim();
-                    text = text.replace(/```json/g, '').replace(/
+                    text = text.replace(/```json/g, '').replace(/```/g, '').trim();
+                    let filtered = JSON.parse(text);
+                    if (Array.isArray(filtered) && filtered.length > 0) {
+                        available = available.filter(w => filtered.includes(w));
+                    }
+                } catch (e) {
+                    console.error("AI 필터링 오류, 기본 풀 사용:", e);
+                }
+            }
+
+            if (available.length === 0) {
+                available = allWords.filter(w => !usedClues.includes(w));
+            }
+
+            if (available.length === 0) return null;
+
+            return available[Math.floor(Math.random() * available.length)];
+        }
+
+        async function startHostGame() {
+            if (!isHost || !supabaseClient) return;
+            if (!checkIsReady()) {
+                alert('본인의 단어가 25개 미만입니다!');
+                return;
+            }
+
+            const { data } = await supabaseClient.from('rooms').select('*').eq('id', roomId).maybeSingle();
+            if (!data) return;
+
+            const firstClue = await getValidClue(data);
+            if (!firstClue) {
+                alert('주제에 맞는 제시어를 찾을 수 없습니다.');
+                return;
+            }
+
+            await supabaseClient.from('rooms').update({ 
+                status: 'playing', 
+                winner: null,
+                current_clue: firstClue,
+                used_clues: [firstClue]
+            }).eq('id', roomId);
+        }
+
+        async function nextClue() {
+            if (!isHost || !supabaseClient) return;
+
+            const { data } = await supabaseClient.from('rooms').select('*').eq('id', roomId).maybeSingle();
+            if (!data) return;
+
+            const nextC = await getValidClue(data);
+            if (!nextC) {
+                alert('사용 가능한 모든 제시어가 소진되었습니다!');
+                return;
+            }
+
+            let usedClues = data.used_clues || [];
+            usedClues.push(nextC);
+
+            await supabaseClient.from('rooms').update({ 
+                current_clue: nextC,
+                used_clues: usedClues
+            }).eq('id', roomId);
+        }
+
+        function startTheGame(clue) {
+            const rawText = document.getElementById('my-words').value;
+            let words = rawText.split(/[\n,]+/).map(w => w.trim()).filter(w => w.length > 0);
+
+            if (words.length < 25) {
+                words = Array.from({length: 25}, (_, i) => `단어${i+1}`);
+            }
+
+            words.sort(() => Math.random() - 0.5);
+            currentBoardWords = words.slice(0, 25);
+
+            document.getElementById('game-over-overlay').style.display = 'none';
+            document.getElementById('waiting-room-screen').style.display = 'none';
+            document.getElementById('game-screen').style.display = 'block';
+            document.getElementById('player-title').innerText = `${myNickname}님의 빙고판`;
+            
+            if (clue) {
+                document.getElementById('current-clue-display').innerText = clue;
+            }
+
+            if (isHost) {
+                document.getElementById('next-clue-btn').style.display = 'block';
+            } else {
+                document.getElementById('next-clue-btn').style.display = 'none';
+            }
+
+            renderBoard();
+        }
+
+        function renderBoard() {
+            const boardDiv = document.getElementById('board');
+            boardDiv.innerHTML = '';
+
+            let playerBoard = [...currentBoardWords].sort(() => Math.random() - 0.5);
+
+            playerBoard.forEach((word) => {
+                const cell = document.createElement('div');
+                cell.className = 'bingo-cell';
+                cell.innerText = word;
+
+                cell.addEventListener('click', () => {
+                    cell.classList.toggle('checked');
+                    checkBingoLogic();
+                });
+                boardDiv.appendChild(cell);
+            });
+            document.getElementById('bingo-status').innerText = '완성된 줄: 0줄';
+            document.getElementById('bingo-claim-btn').style.display = 'none';
+        }
+
+        function checkBingoLogic() {
+            const cells = document.querySelectorAll('.bingo-cell');
+            let matrix = [];
+            for (let i = 0; i < 5; i++) {
+                let row = [];
+                for (let j = 0; j < 5; j++) {
+                    row.push(cells[i * 5 + j].classList.contains('checked'));
+                }
+                matrix.push(row);
+            }
+
+            let bingoCount = 0;
+            for (let i = 0; i < 5; i++) if (matrix[i].every(v => v)) bingoCount++;
+            for (let j = 0; j < 5; j++) if ([0,1,2,3,4].every(i => matrix[i][j])) bingoCount++;
+            if ([0,1,2,3,4].every(i => matrix[i][i])) bingoCount++;
+            if ([0,1,2,3,4].every(i => matrix[i][4-i])) bingoCount++;
+
+            document.getElementById('bingo-status').innerText = `완성된 줄: ${bingoCount}줄`;
+
+            const claimBtn = document.getElementById('bingo-claim-btn');
+            if (bingoCount >= targetLines) {
+                claimBtn.style.display = 'block';
+            } else {
+                claimBtn.style.display = 'none';
+            }
+        }
+
+        async function claimBingo() {
+            if (!supabaseClient) return;
+            await supabaseClient.from('rooms').update({ 
+                status: 'gameover', 
+                winner: myNickname 
+            }).eq('id', roomId);
+            
+            showGameOver(myNickname);
+        }
+
+        async function showGameOver(winnerName) {
+            document.getElementById('game-over-overlay').style.display = 'flex';
+            
+            const subText = document.getElementById('winner-sub-text');
+            const gameOverBtn = document.getElementById('game-over-btn');
+
+            if (winnerName === myNickname) {
+                document.getElementById('winner-text').innerText = `🎉 승리 추카!! 🎉`;
+                subText.style.display = 'none';
+            } else {
+                document.getElementById('winner-text').innerText = `🎉 승자: ${winnerName}님! 🎉`;
+                subText.style.display = 'block';
+                subText.innerText = '누군가 빙고를 완성했습니다!';
+            }
+
+            if (isHost) {
+                gameOverBtn.style.display = 'block';
+            } else {
+                gameOverBtn.style.display = 'none';
+            }
+        }
+
+        async function returnToWaitingRoom() {
+            document.getElementById('game-over-overlay').style.display = 'none';
+            document.getElementById('game-screen').style.display = 'none';
+            
+            document.getElementById('my-words').value = '';
+            localStorage.removeItem(`bingo_words_${roomId}`);
+            document.getElementById('word-count-status').innerText = '작성한 단어: 0 / 25개 (미완료)';
+            document.getElementById('word-count-status').style.color = 'var(--danger)';
+
+            if (roomId && isHost && supabaseClient) {
+                const { data } = await supabaseClient.from('rooms').select('players_status').eq('id', roomId).maybeSingle();
+                if (data && data.players_status) {
+                    let ps = data.players_status;
+                    Object.keys(ps).forEach(k => ps[k] = false);
+
+                    await supabaseClient.from('rooms').update({ 
+                        status: 'waiting', 
+                        winner: null,
+                        players_status: ps,
+                        player_words: {},
+                        current_clue: '시작 대기 중',
+                        used_clues: []
+                    }).eq('id', roomId);
+                }
+            }
+
+            document.getElementById('waiting-room-screen').style.display = 'block';
+            if (isHost) {
+                document.getElementById('host-start-btn').style.display = 'block';
+            }
+        }
+
+        function resetToWaitingRoomUI() {
+            document.getElementById('game-over-overlay').style.display = 'none';
+            document.getElementById('game-screen').style.display = 'none';
+
+            document.getElementById('my-words').value = '';
+            localStorage.removeItem(`bingo_words_${roomId}`);
+            document.getElementById('word-count-status').innerText = '작성한 단어: 0 / 25개 (미완료)';
+            document.getElementById('word-count-status').style.color = 'var(--danger)';
+
+            document.getElementById('waiting-room-screen').style.display = 'block';
+            document.getElementById('guest-waiting-msg').style.display = 'block';
+        }
+
+        // HTML onclick 이벤트에서 정상 호출되도록 전역 객체(window)에 함수 명시적 바인딩
+        window.showHostSetup = showHostSetup;
+        window.createRoom = createRoom;
+        window.backToMain = backToMain;
+        window.joinRoomWithNickname = joinRoomWithNickname;
+        window.updateRoomTopic = updateRoomTopic;
+        window.copyLink = copyLink;
+        window.updateMyWordStatusOnly = updateMyWordStatusOnly;
+        window.startHostGame = startHostGame;
+        window.nextClue = nextClue;
+        window.claimBingo = claimBingo;
+        window.returnToWaitingRoom = returnToWaitingRoom;
+    </script>
+</body>
+</html>
