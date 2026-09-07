@@ -145,10 +145,12 @@
 
     <script>
         const SUPABASE_URL = 'https://mlazabosisxkhnsjvwqo.supabase.co';
-        const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1sYXphYm9zaXN4a2huc2p2d3FvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODg3ODU1MjEsImV4cCI6MjEwNDM2MTUyMX0.RAXsRPOmPJ51nIGw1P1-1xU2gQzLD-Jeajg8JuUKgqk';
+        const SUPABASE_ANON_KEY = 'sb_publishable_imu1GbW4Wl_mP91NtA2NTg_w-_AVgya';
 
-        // 전역 객체 이름 충돌 방지 및 안전한 클라이언트 생성
-        const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+        // 최신 Publishable 키 대응 설정 적용
+        const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+            auth: { persistSession: false }
+        });
 
         let myNickname = '';
         let isHost = false;
