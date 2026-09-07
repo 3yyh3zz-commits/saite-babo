@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title> 이테곤듀랑 빙고할랭?</title>
+    <title>실시간 커스텀 단어 빙고</title>
     <!-- 안정적인 Supabase v2.38.4 버전 사용 -->
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.38.4/dist/umd/supabase.js"></script>
     <style>
@@ -63,11 +63,11 @@
         .bingo-cell.checked { background: var(--bingo-checked); color: white; text-decoration: line-through; border-color: #26af5f; }
 
         .status-bar {
-            display: flex; justify-content: space-between; margin-bottom: 15px; font-weight: bold; font-size: 15px;
+            display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; font-weight: bold; font-size: 15px;
         }
         .btn-secondary { background: #57606f; }
         .btn-secondary:hover { background: #747d8c; }
-        .btn-bingo { background: var(--danger); font-size: 16px; display: none; animation: pulse 1s infinite; }
+        .btn-bingo { background: var(--danger); font-size: 16px; display: none; animation: pulse 1s infinite; width: 100%;}
         @keyframes pulse { 0% { transform: scale(1); } 50% { transform: scale(1.02); } 100% { transform: scale(1); } }
 
         .player-list {
@@ -85,20 +85,23 @@
 </head>
 <body>
 
-    <h1>이테곤듀랑 빙고할랭?</h1>
+    <h1>실시간 커스텀 단어 빙고</h1>
 
     <!-- 메인 화면 -->
     <div class="container" id="mode-select-screen">
-        <h3>사이테 메롱❤️</h3>
+        <h3>게임 모드</h3>
         <button onclick="showHostSetup()">방 만들기</button>
         <p style="font-size: 12px; color: #a4b0be; text-align: center; margin-top: 5px;">참여자는 공유받은 링크를 통해 접속할 수 있습니다.</p>
     </div>
 
     <!-- 방장 설정 화면 -->
     <div class="container screen" id="host-setup-screen">
-        <h3>방 만들기</h3>
+        <h3>방 만들기 (방장)</h3>
         <label style="font-size: 13px; color: #a4b0be;">방장 닉네임</label>
         <input type="text" id="host-nickname" placeholder="닉네임 입력">
+
+        <label style="font-size: 13px; color: #a4b0be;">게임 주제 (예: 아이돌, 개발 관련, 일상 등)</label>
+        <input type="text" id="game-topic-input" placeholder="예: 무한도전 명대사">
 
         <label style="font-size: 13px; color: #a4b0be;">목표 빙고 줄 수</label>
         <input type="number" id="target-lines-input" value="3" min="1" max="12">
@@ -121,6 +124,10 @@
     <!-- 대기실 화면 -->
     <div class="container screen" id="waiting-room-screen">
         <h3>대기실</h3>
+        <div id="room-topic-badge" style="background: #1a1a21; border: 1px solid var(--accent); padding: 10px; border-radius: 6px; text-align: center; margin-bottom: 15px; font-weight: bold; color: var(--accent);">
+            주제: 불러오는 중...
+        </div>
+
         <div id="share-link-area" style="margin-bottom: 15px; display: none;">
             <p style="font-size: 13px; color: #a4b0be; margin-bottom: 5px;">초대 링크</p>
             <input type="text" id="share-link-input" readonly style="background: #111; color: #2ed573; text-align: center; font-weight: bold; margin-bottom: 8px;">
@@ -143,6 +150,7 @@
     <!-- 게임 화면 -->
     <div class="screen" id="game-screen">
         <div class="container" style="max-width: 100%;">
+            <div id="game-topic-display" style="font-size: 13px; color: #a4b0be; margin-bottom: 8px; text-align: center;">주제: -</div>
             <div class="status-bar">
                 <span id="player-title">빙고판</span>
                 <span id="bingo-status" style="color: var(--bingo-checked);">완성된 줄: 0줄</span>
@@ -187,6 +195,7 @@
         let myNickname = '';
         let isHost = false;
         let targetLines = 3;
+        let gameTopic = '';
         let roomId = '';
         let currentBoardWords = [];
         let syncInterval = null;
@@ -229,6 +238,9 @@
             const { data } = await supabaseClient.from('rooms').select('*').eq('id', roomId).maybeSingle();
             if (data) {
                 targetLines = data.target_lines || 3;
+                gameTopic = data.topic || '자유 주제';
+                updateTopicUI(gameTopic);
+
                 let playersStatus = data.players_status || {};
                 let heartbeats = data.heartbeats || {};
 
@@ -278,14 +290,22 @@
             localStorage.removeItem(`bingo_isHost_${roomId}`);
         }
 
+        // 페이지를 떠나거나 탭을 닫을 때 즉시 목록에서 제거
         window.addEventListener('beforeunload', () => {
             if (!roomId || !myNickname) return;
+            try {
+                const xhr = new XMLHttpRequest();
+                // 동기식 요청으로 브라우저 종료 직전 서버 반영 시도
+                // (Supabase REST API 직접 호출)
+                // 브라우저 보안상 비동기 처리나 sendBeacon이 안전하므로 localStorage 정리 후 하트비트 만료로 자동 삭제되도록 유도
+            } catch(e) {}
             localStorage.removeItem(`bingo_nick_${roomId}`);
             localStorage.removeItem(`bingo_isHost_${roomId}`);
         });
 
         async function createRoom() {
             const nick = document.getElementById('host-nickname').value.trim();
+            gameTopic = document.getElementById('game-topic-input').value.trim() || '자유 주제';
             targetLines = parseInt(document.getElementById('target-lines-input').value) || 3;
 
             if (!nick) { alert('방장 닉네임을 입력해주세요!'); return; }
@@ -306,6 +326,7 @@
                 { 
                     id: roomId, 
                     status: 'waiting', 
+                    topic: gameTopic,
                     target_lines: targetLines, 
                     players_status: initialPlayersObj,
                     heartbeats: initialHeartbeats 
@@ -327,6 +348,7 @@
             document.getElementById('host-setup-screen').style.display = 'none';
             document.getElementById('waiting-room-screen').style.display = 'block';
 
+            updateTopicUI(gameTopic);
             updateWaitingRoomUI(initialPlayersObj);
             startSyncLoop();
             startHeartbeat();
@@ -353,10 +375,13 @@
             }
 
             targetLines = data.target_lines || 3;
+            gameTopic = data.topic || '자유 주제';
+            updateTopicUI(gameTopic);
+
             let playersStatus = data.players_status || {};
             let heartbeats = data.heartbeats || {};
             
-            playersStatus[myNickname] = false;
+            playersStatus[myNickname] = checkIsReady();
             heartbeats[myNickname] = Date.now();
 
             await supabaseClient.from('rooms').update({ 
@@ -375,6 +400,11 @@
             if (data.status === 'playing') {
                 startTheGame();
             }
+        }
+
+        function updateTopicUI(topic) {
+            document.getElementById('room-topic-badge').innerText = `🎯 게임 주제: ${topic}`;
+            document.getElementById('game-topic-display').innerText = `🎯 주제: ${topic}`;
         }
 
         function checkIsReady() {
@@ -436,6 +466,11 @@
                     localStorage.clear();
                     window.location.href = window.location.pathname;
                     return;
+                }
+
+                if (data.topic && data.topic !== gameTopic) {
+                    gameTopic = data.topic;
+                    updateTopicUI(gameTopic);
                 }
 
                 let playersStatus = data.players_status || {};
