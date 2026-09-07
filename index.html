@@ -4,7 +4,6 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>실시간 커스텀 단어 빙고</title>
-    <!-- 수파베이스 JS 클라이언트 불러오기 -->
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <style>
         :root {
@@ -86,14 +85,12 @@
 
     <h1>실시간 커스텀 단어 빙고</h1>
 
-    <!-- 1. 첫 화면 (메인 선택) -->
     <div class="container" id="mode-select-screen">
         <h3>게임 모드 선택</h3>
         <button onclick="showHostSetup()">방 만들기</button>
         <button class="btn-secondary" onclick="showJoinSetup()">방 참여하기</button>
     </div>
 
-    <!-- 2. 방장 설정 화면 -->
     <div class="container screen" id="host-setup-screen">
         <h3>방 만들기 (방장)</h3>
         <label style="font-size: 13px; color: #a4b0be;">방장 닉네임</label>
@@ -106,7 +103,6 @@
         <button class="btn-secondary" onclick="backToMain()">뒤로 가기</button>
     </div>
 
-    <!-- 3. 참여자 입장 입력 화면 -->
     <div class="container screen" id="join-setup-screen">
         <h3>방 참여하기</h3>
         <label style="font-size: 13px; color: #a4b0be;">내 닉네임</label>
@@ -119,7 +115,6 @@
         <button class="btn-secondary" onclick="backToMain()">뒤로 가기</button>
     </div>
 
-    <!-- 4. 대기실 화면 -->
     <div class="container screen" id="waiting-room-screen">
         <h3>대기실</h3>
         <div id="share-link-area" style="margin-bottom: 15px; display: none;">
@@ -140,7 +135,6 @@
         <p id="guest-waiting-msg" style="text-align: center; color: #a4b0be; font-size: 13px; margin-top: 10px; display: none;">방장이 게임을 시작하기를 기다리는 중...</p>
     </div>
 
-    <!-- 5. 실제 게임 플레이 화면 -->
     <div class="screen" id="game-screen">
         <div class="container" style="max-width: 100%;">
             <div class="status-bar">
@@ -152,7 +146,6 @@
         </div>
     </div>
 
-    <!-- 6. 게임 종료 오버레이 -->
     <div id="game-over-overlay">
         <h2 id="winner-text" style="color: var(--bingo-checked); margin-bottom: 10px;"></h2>
         <p style="color: #a4b0be; margin-bottom: 20px;">누군가 빙고를 완성했습니다!</p>
@@ -160,10 +153,8 @@
     </div>
 
     <script>
-        // ======= [본인의 정확한 Supabase 정보] =======
         const SUPABASE_URL = 'https://mlazabosisxkhnsjvwqo.supabase.co';
         const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1sYXphYm9zaXN4a2huc2p2d3FvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODg3ODU1MjEsImV4cCI6MjEwNDM2MTUyMX0.RAXsRPOmPJ51nIGw1P1-1xU2gQzLD-Jeajg8JuUKgqk';
-        // ============================================
 
         const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
@@ -225,12 +216,13 @@
             isHost = true;
             roomId = Math.random().toString(36).substring(2, 8);
 
+            // 데이터 삽입 시도
             const { error } = await supabaseClient.from('rooms').insert([
                 { id: roomId, status: 'waiting', target_lines: targetLines, players: [myNickname] }
             ]);
 
             if (error) {
-                alert('방 생성 실패: Supabase RLS 설정(Policies)이 꺼져있는지 확인해주세요.\n(에러: ' + error.message + ')');
+                alert('방 생성 오류 발생!\nSupabase 대시보드에서 "rooms" 테이블과 컬럼(id, status, target_lines, players, winner)이 정확히 있는지, RLS가 꺼져있는지 확인해주세요.\n\n에러내용: ' + error.message);
                 return;
             }
 
@@ -284,19 +276,24 @@
         }
 
         async function joinRoomAsGuest() {
-            const { data, error } = await supabaseClient.from('rooms').select('*').eq('id', roomId).single();
+            // 방 존재 여부 확인
+            const { data, error } = await supabaseClient.from('rooms').select('*').eq('id', roomId).maybeSingle();
             
             if (error || !data) {
-                alert('존재하지 않거나 만료된 방입니다. Supabase에 방이 정상 생성되었는지 확인해주세요.');
+                alert('서버에서 방을 찾을 수 없습니다. (방장이 방을 만들 때 데이터 저장이 차단되었거나 방 번호가 잘못되었습니다.)\n상세에러: ' + (error ? error.message : '데이터 없음'));
                 window.location.href = window.location.pathname;
                 return;
             }
 
             targetLines = data.target_lines || 3;
             let players = data.players || [];
+            
             if (!players.includes(myNickname)) {
                 players.push(myNickname);
-                await supabaseClient.from('rooms').update({ players: players }).eq('id', roomId);
+                const { error: updateError } = await supabaseClient.from('rooms').update({ players: players }).eq('id', roomId);
+                if (updateError) {
+                    console.error('플레이어 목록 업데이트 실패:', updateError.message);
+                }
             }
             updatePlayerListUI(players);
 
@@ -305,12 +302,11 @@
             }
         }
 
-        // 안정적인 실시간 동기화 루프 (2초마다 서버 확인)
         function startSyncLoop() {
             if (syncInterval) clearInterval(syncInterval);
             syncInterval = setInterval(async () => {
                 if (!roomId) return;
-                const { data, error } = await supabaseClient.from('rooms').select('*').eq('id', roomId).single();
+                const { data, error } = await supabaseClient.from('rooms').select('*').eq('id', roomId).maybeSingle();
                 if (error || !data) return;
 
                 if (data.players) {
