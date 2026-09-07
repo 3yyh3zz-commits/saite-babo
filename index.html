@@ -139,7 +139,8 @@
     <div id="game-over-overlay">
         <h2 id="winner-text" style="color: var(--bingo-checked); margin-bottom: 10px;"></h2>
         <p id="winner-sub-text" style="color: #a4b0be; margin-bottom: 20px;">누군가 빙고를 완성했습니다!</p>
-        <button onclick="returnToWaitingRoom()" style="max-width: 250px; background: var(--bingo-checked);">대기실로 돌아가서 재판하기</button>
+        <!-- 방장에게만 보이는 '다시하기' 버튼 -->
+        <button id="game-over-btn" onclick="returnToWaitingRoom()" style="max-width: 250px; background: var(--bingo-checked); display: none;">다시하기</button>
     </div>
 
     <script>
@@ -292,6 +293,11 @@
                 if (data.status === 'gameover' && data.winner && document.getElementById('game-over-overlay').style.display !== 'flex') {
                     showGameOver(data.winner);
                 }
+
+                // 참여자가 대기실로 돌아왔을 때 처리 (방장이 '다시하기'를 눌러 상태가 waiting으로 바뀐 경우)
+                if (data.status === 'waiting' && document.getElementById('waiting-room-screen').style.display !== 'block' && document.getElementById('game-screen').style.display === 'block') {
+                    resetToWaitingRoomUI();
+                }
             }, 1500);
         }
 
@@ -432,51 +438,68 @@
             document.getElementById('game-over-overlay').style.display = 'flex';
             
             const subText = document.getElementById('winner-sub-text');
+            const gameOverBtn = document.getElementById('game-over-btn');
+
             if (winnerName === myNickname) {
                 document.getElementById('winner-text').innerText = `🎉 승리 추카!! 🎉`;
-                subText.style.display = 'none'; // 본인 화면에는 '누군가 빙고를 완성했습니다' 문구 삭제
+                subText.style.display = 'none';
             } else {
                 document.getElementById('winner-text').innerText = `🎉 승자: ${winnerName}님! 🎉`;
                 subText.style.display = 'block';
                 subText.innerText = '누군가 빙고를 완성했습니다!';
             }
+
+            // 방장에게만 '다시하기' 버튼을 보이게 설정 (참여자에게는 아예 안 보임)
+            if (isHost) {
+                gameOverBtn.style.display = 'block';
+            } else {
+                gameOverBtn.style.display = 'none';
+            }
         }
 
+        // 방장이 '다시하기' 버튼을 눌렀을 때 호출
         async function returnToWaitingRoom() {
             document.getElementById('game-over-overlay').style.display = 'none';
             document.getElementById('game-screen').style.display = 'none';
             
-            // 단어 입력창을 빈칸으로 초기화
+            // 단어 입력창 초기화
             document.getElementById('my-words').value = '';
             document.getElementById('word-count-status').innerText = '작성된 단어: 0 / 25개 (미완료)';
             document.getElementById('word-count-status').style.color = 'var(--danger)';
 
-            if (roomId) {
+            if (roomId && isHost) {
                 const { data } = await supabaseClient.from('rooms').select('players_status').eq('id', roomId).maybeSingle();
                 if (data && data.players_status) {
                     let ps = data.players_status;
-                    ps[myNickname] = false; // 빈칸이 되었으므로 미완료 상태로 전환
+                    // 모든 참여자의 준비 상태를 미완료(false)로 리셋
+                    Object.keys(ps).forEach(k => ps[k] = false);
 
-                    if (isHost) {
-                        await supabaseClient.from('rooms').update({ 
-                            status: 'waiting', 
-                            winner: null,
-                            players_status: ps 
-                        }).eq('id', roomId);
-                    } else {
-                        await supabaseClient.from('rooms').update({ 
-                            players_status: ps 
-                        }).eq('id', roomId);
-                    }
+                    await supabaseClient.from('rooms').update({ 
+                        status: 'waiting', 
+                        winner: null,
+                        players_status: ps 
+                    }).eq('id', roomId);
                 }
             }
 
             document.getElementById('waiting-room-screen').style.display = 'block';
             if (isHost) {
                 document.getElementById('host-start-btn').style.display = 'block';
-            } else {
-                document.getElementById('guest-waiting-msg').style.display = 'block';
             }
+        }
+
+        // 참여자 화면에서 방장이 게임을 초기화했을 때 자동으로 대기실로 이동시켜주는 함수
+        function resetToWaitingRoomUI() {
+            document.getElementById('game-over-overlay').style.display = 'none';
+            document.getElementById('game-screen').style.display = 'none';
+
+            // 단어 입력창 초기화
+            document.getElementById('my-words').value = '';
+            document.getElementById('word-count-status').innerText = '작성된 단어: 0 / 25개 (미완료)';
+            document.getElementById('word-count-status').style.color = 'var(--danger)';
+
+            document.getElementById('waiting-room-screen').style.display = 'block';
+            document.getElementById('guest-waiting-msg').style.display = 'block';
         }
     </script>
 </body>
