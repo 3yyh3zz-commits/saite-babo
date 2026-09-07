@@ -160,6 +160,23 @@
     </div>
 
     <script>
+        // 우클릭 방지
+        document.addEventListener('contextmenu', function(e) {
+            e.preventDefault();
+        });
+
+        // F12 및 주요 개발자 도구 단축키 방지
+        document.addEventListener('keydown', function(e) {
+            if (
+                e.key === 'F12' ||
+                (e.ctrlKey && e.shiftKey && (e.key === 'I' || e.key === 'J' || e.key === 'C')) ||
+                (e.ctrlKey && e.key === 'U')
+            ) {
+                e.preventDefault();
+                return false;
+            }
+        });
+
         const SUPABASE_URL = 'https://mlazabosisxkhnsjvwqo.supabase.co';
         const SUPABASE_ANON_KEY = 'sb_publishable_imu1GbW4Wl_mP91NtA2NTg_w-_AVgya';
 
@@ -261,7 +278,6 @@
             localStorage.removeItem(`bingo_isHost_${roomId}`);
         }
 
-        // 브라우저 닫거나 새로고침 할 때 서버 목록에서 즉시 제거 시도 (sendBeacon 활용)
         window.addEventListener('beforeunload', () => {
             if (!roomId || !myNickname) return;
             localStorage.removeItem(`bingo_nick_${roomId}`);
@@ -395,7 +411,6 @@
             }
         }
 
-        // 생존 신고(Heartbeat) 함수: 2초마다 내 접속 상태를 갱신
         function startHeartbeat() {
             if (heartbeatInterval) clearInterval(heartbeatInterval);
             heartbeatInterval = setInterval(async () => {
@@ -411,7 +426,6 @@
             }, 2000);
         }
 
-        // 동기화 및 오프라인 플레이어 자동 청소 루프
         function startSyncLoop() {
             if (syncInterval) clearInterval(syncInterval);
             syncInterval = setInterval(async () => {
@@ -429,7 +443,6 @@
                 let now = Date.now();
                 let updated = false;
 
-                // 5초 이상 하트비트 응답이 없는 플레이어는 퇴장한 것으로 간주하고 삭제
                 Object.keys(heartbeats).forEach(name => {
                     if (now - heartbeats[name] > 5000) {
                         delete heartbeats[name];
@@ -594,7 +607,7 @@
             showGameOver(myNickname);
         }
 
-        function showGameOver(winnerName) {
+        async function showGameOver(winnerName) {
             document.getElementById('game-over-overlay').style.display = 'flex';
             
             const subText = document.getElementById('winner-sub-text');
@@ -605,8 +618,8 @@
                 subText.style.display = 'none';
             } else {
                 document.getElementById('winner-text').innerText = `🎉 승자: ${winnerName}님! 🎉`;
-                subTest.style.display = 'block';
-                subTest.innerText = '누군가 빙고를 완성했습니다!';
+                subText.style.display = 'block';
+                subText.innerText = '누군가 빙고를 완성했습니다!';
             }
 
             if (isHost) {
