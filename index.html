@@ -4,8 +4,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>실시간 커스텀 단어 빙고</title>
-    <!-- 차단 우회 및 안정성을 위해 번들러 방식의 UMD 스크립트 적용 -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/supabase-js/2.39.8/supabase.min.js"></script>
+    <!-- 브라우저 추적 방지 차단을 완벽히 우회하기 위한 안정적인 CDN 소스 적용 -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <style>
         :root {
             --bg-color: #1e1e24;
@@ -196,9 +196,17 @@
         const SUPABASE_URL = 'https://mlazabosisxkhnsjvwqo.supabase.co';
         const SUPABASE_ANON_KEY = 'sb_publishable_imu1GbW4Wl_mP91NtA2NTg_w-_AVgya';
 
-        const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
-            auth: { persistSession: false }
-        });
+        // Supabase 클라이언트 안전 생성 (CDN 스크립트 로드 지연 대비)
+        let supabaseClient = null;
+        try {
+            if (window.supabase && window.supabase.createClient) {
+                supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+                    auth: { persistSession: false, storage: null }
+                });
+            }
+        } catch (e) {
+            console.error("Supabase Init Error:", e);
+        }
 
         let myNickname = '';
         let isHost = false;
@@ -210,6 +218,11 @@
         let heartbeatInterval = null;
 
         window.onload = async function() {
+            if (!supabaseClient) {
+                alert("Supabase 라이브러리를 불러오지 못했습니다. 네트워크 상태나 브라우저 설정을 확인해주세요.");
+                return;
+            }
+
             const urlParams = new URLSearchParams(window.location.search);
             roomId = urlParams.get('room');
 
@@ -308,10 +321,11 @@
 
         async function createRoom() {
             const nick = document.getElementById('host-nickname').value.trim();
+            if (!nick) { alert('방장 닉네임을 입력해주세요!'); return; }
+
+            // 변수 초기화 순서 수정 완료
             targetLines = parseInt(document.getElementById('target-lines-input').value) || 3;
             gameTopic = '자유 주제';
-
-            if (!nick) { alert('방장 닉네임을 입력해주세요!'); return; }
 
             myNickname = nick;
             isHost = true;
