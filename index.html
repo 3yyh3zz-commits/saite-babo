@@ -4,8 +4,12 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>실시간 커스텀 단어 빙고</title>
-    <!-- 브라우저 추적 방지 차단을 완벽히 우회하기 위한 안정적인 CDN 소스 적용 -->
-    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <!-- 모듈 방식 CDN 적용으로 추적 방지 및 스크립트 로드 오류 완벽 회피 -->
+    <script type="module">
+        import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm';
+        window.createClient = createClient;
+        window.dispatchEvent(new Event('supabase-loaded'));
+    </script>
     <style>
         :root {
             --bg-color: #1e1e24;
@@ -196,18 +200,7 @@
         const SUPABASE_URL = 'https://mlazabosisxkhnsjvwqo.supabase.co';
         const SUPABASE_ANON_KEY = 'sb_publishable_imu1GbW4Wl_mP91NtA2NTg_w-_AVgya';
 
-        // Supabase 클라이언트 안전 생성 (CDN 스크립트 로드 지연 대비)
         let supabaseClient = null;
-        try {
-            if (window.supabase && window.supabase.createClient) {
-                supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
-                    auth: { persistSession: false, storage: null }
-                });
-            }
-        } catch (e) {
-            console.error("Supabase Init Error:", e);
-        }
-
         let myNickname = '';
         let isHost = false;
         let targetLines = 3;
@@ -217,12 +210,37 @@
         let syncInterval = null;
         let heartbeatInterval = null;
 
-        window.onload = async function() {
-            if (!supabaseClient) {
-                alert("Supabase 라이브러리를 불러오지 못했습니다. 네트워크 상태나 브라우저 설정을 확인해주세요.");
-                return;
+        function initSupabase() {
+            if (window.createClient) {
+                try {
+                    supabaseClient = window.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+                        auth: { persistSession: false, storage: null }
+                    });
+                    return true;
+                } catch (e) {
+                    console.error("Supabase 생성 오류:", e);
+                }
             }
+            return false;
+        }
 
+        window.addEventListener('supabase-loaded', () => {
+            if (initSupabase()) {
+                checkInitialRoute();
+            }
+        });
+
+        window.onload = function() {
+            if (initSupabase()) {
+                checkInitialRoute();
+            } else {
+                window.addEventListener('supabase-loaded', () => {
+                    checkInitialRoute();
+                }, { once: true });
+            }
+        };
+
+        async function checkInitialRoute() {
             const urlParams = new URLSearchParams(window.location.search);
             roomId = urlParams.get('room');
 
@@ -235,6 +253,13 @@
                 if (savedNick) {
                     myNickname = savedNick;
                     isHost = savedRole;
+
+                    // 새로고침 시 이전에 작성했던 단어 복구
+                    const savedWords = localStorage.getItem(`bingo_words_${roomId}`);
+                    if (savedWords) {
+                        document.getElementById('my-words').value = savedWords;
+                        updateMyWordStatusOnly(false); // 로컬 저장소 재저장 막기
+                    }
 
                     if (isHost) {
                         const shareUrl = window.location.href;
@@ -255,9 +280,10 @@
                     document.getElementById('guest-setup-screen').style.display = 'block';
                 }
             }
-        };
+        }
 
         async function restoreMySession() {
+            if (!supabaseClient) return;
             const { data } = await supabaseClient.from('rooms').select('*').eq('id', roomId).maybeSingle();
             if (data) {
                 targetLines = data.target_lines || 3;
@@ -304,7 +330,7 @@
         }
 
         async function clearSessionData() {
-            if (!roomId || !myNickname) return;
+            if (!roomId || !myNickname || !supabaseClient) return;
             try {
                 const { data } = await supabaseClient.from('rooms').select('players_status, heartbeats').eq('id', roomId).maybeSingle();
                 if (data) {
@@ -317,13 +343,18 @@
             } catch(e) {}
             localStorage.removeItem(`bingo_nick_${roomId}`);
             localStorage.removeItem(`bingo_isHost_${roomId}`);
+            localStorage.removeItem(`bingo_words_${roomId}`);
         }
 
         async function createRoom() {
+            if (!supabaseClient) {
+                alert("데이터베이스 연결 초기화 중입니다. 잠시 후 다시 시도해주세요.");
+                return;
+            }
+
             const nick = document.getElementById('host-nickname').value.trim();
             if (!nick) { alert('방장 닉네임을 입력해주세요!'); return; }
 
-            // 변수 초기화 순서 수정 완료
             targetLines = parseInt(document.getElementById('target-lines-input').value) || 3;
             gameTopic = '자유 주제';
 
@@ -376,7 +407,7 @@
         }
 
         async function updateRoomTopic() {
-            if (!isHost) return;
+            if (!isHost || !supabaseClient) return;
             const newTopic = document.getElementById('room-topic-input').value.trim() || '자유 주제';
             const { error } = await supabaseClient.from('rooms').update({ topic: newTopic }).eq('id', roomId);
             if (error) {
@@ -389,6 +420,7 @@
         }
 
         async function joinRoomWithNickname() {
+            if (!supabaseClient) return;
             const nickInput = document.getElementById('guest-nickname').value.trim();
             if (!nickInput) {
                 alert('사용할 닉네임을 입력해주세요!');
@@ -448,8 +480,13 @@
             return words.length >= 25;
         }
 
-        function updateMyWordStatusOnly() {
+        function updateMyWordStatusOnly(saveToLocal = true) {
             const rawText = document.getElementById('my-words').value;
+            
+            if (saveToLocal && roomId) {
+                localStorage.setItem(`bingo_words_${roomId}`, rawText);
+            }
+
             let words = rawText.split(/[\n,]+/).map(w => w.trim()).filter(w => w.length > 0);
             const count = words.length;
             const statusIndicator = document.getElementById('word-count-status');
@@ -466,7 +503,7 @@
         }
 
         async function saveMyWordsToSupabase() {
-            if (!roomId || !myNickname) return;
+            if (!roomId || !myNickname || !supabaseClient) return;
             const isReady = checkIsReady();
             const { data } = await supabaseClient.from('rooms').select('players_status').eq('id', roomId).maybeSingle();
             if (data && data.players_status) {
@@ -479,7 +516,7 @@
         function startHeartbeat() {
             if (heartbeatInterval) clearInterval(heartbeatInterval);
             heartbeatInterval = setInterval(async () => {
-                if (!roomId || !myNickname) return;
+                if (!roomId || !myNickname || !supabaseClient) return;
                 try {
                     const { data } = await supabaseClient.from('rooms').select('heartbeats').eq('id', roomId).maybeSingle();
                     if (data) {
@@ -494,7 +531,7 @@
         function startSyncLoop() {
             if (syncInterval) clearInterval(syncInterval);
             syncInterval = setInterval(async () => {
-                if (!roomId) return;
+                if (!roomId || !supabaseClient) return;
                 const { data, error } = await supabaseClient.from('rooms').select('*').eq('id', roomId).maybeSingle();
                 if (error || !data) {
                     alert('방이 종료되었거나 삭제되었습니다.');
@@ -601,7 +638,7 @@
         }
 
         async function startHostGame() {
-            if (!isHost) return;
+            if (!isHost || !supabaseClient) return;
             if (!checkIsReady()) {
                 alert('본인의 단어가 25개 미만입니다!');
                 return;
@@ -623,7 +660,7 @@
         }
 
         async function nextClue() {
-            if (!isHost) return;
+            if (!isHost || !supabaseClient) return;
 
             const { data } = await supabaseClient.from('rooms').select('used_clues').eq('id', roomId).maybeSingle();
             let usedClues = data && data.used_clues ? data.used_clues : [];
@@ -726,6 +763,7 @@
         }
 
         async function claimBingo() {
+            if (!supabaseClient) return;
             await supabaseClient.from('rooms').update({ 
                 status: 'gameover', 
                 winner: myNickname 
@@ -761,10 +799,11 @@
             document.getElementById('game-screen').style.display = 'none';
             
             document.getElementById('my-words').value = '';
-            document.getElementById('word-count-status').innerText = '작성된 단어: 0 / 25개 (미완료)';
+            localStorage.removeItem(`bingo_words_${roomId}`);
+            document.getElementById('word-count-status').innerText = '작성한 단어: 0 / 25개 (미완료)';
             document.getElementById('word-count-status').style.color = 'var(--danger)';
 
-            if (roomId && isHost) {
+            if (roomId && isHost && supabaseClient) {
                 const { data } = await supabaseClient.from('rooms').select('players_status').eq('id', roomId).maybeSingle();
                 if (data && data.players_status) {
                     let ps = data.players_status;
@@ -791,7 +830,8 @@
             document.getElementById('game-screen').style.display = 'none';
 
             document.getElementById('my-words').value = '';
-            document.getElementById('word-count-status').innerText = '작성된 단어: 0 / 25개 (미완료)';
+            localStorage.removeItem(`bingo_words_${roomId}`);
+            document.getElementById('word-count-status').innerText = '작성한 단어: 0 / 25개 (미완료)';
             document.getElementById('word-count-status').style.color = 'var(--danger)';
 
             document.getElementById('waiting-room-screen').style.display = 'block';
