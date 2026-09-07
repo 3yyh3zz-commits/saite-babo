@@ -3,7 +3,9 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>커스텀 단어 빙고게임</title>
+    <title>실시간 커스텀 단어 빙고</title>
+    <!-- 수파베이스 JS 클라이언트 불러오기 -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <style>
         :root {
             --bg-color: #1e1e24;
@@ -82,7 +84,7 @@
 </head>
 <body>
 
-    <h1>커스텀 단어 빙고게임</h1>
+    <h1>실시간 커스텀 단어 빙고</h1>
 
     <!-- 1. 첫 화면 -->
     <div class="container" id="mode-select-screen">
@@ -103,7 +105,7 @@
         <button class="btn-secondary" onclick="backToMain()">뒤로 가기</button>
     </div>
 
-    <!-- 3. 링크 공유 및 대기방 화면 -->
+    <!-- 3. 대기실 화면 -->
     <div class="container screen" id="waiting-room-screen">
         <h3>대기실</h3>
         <div id="share-link-area" style="margin-bottom: 15px;">
@@ -144,15 +146,20 @@
     </div>
 
     <script>
+        // ======= [여기에 본인의 수파베이스 정보를 넣으세요] =======
+        const SUPABASE_URL = 'YOUR_SUPABASE_URL';
+        const SUPABASE_ANON_KEY = 'YOUR_SUPABASE_ANON_KEY';
+        // ========================================================
+
+        const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
         let myNickname = '';
         let isHost = false;
         let targetLines = 3;
         let roomId = '';
-        let channel = null;
-        let players = [];
         let currentBoardWords = [];
 
-        window.onload = function() {
+        window.onload = async function() {
             const urlParams = new URLSearchParams(window.location.search);
             roomId = urlParams.get('room');
             const lines = urlParams.get('lines');
@@ -161,7 +168,6 @@
                 targetLines = parseInt(lines) || 3;
                 document.getElementById('mode-select-screen').style.display = 'none';
                 
-                // 참여자 닉네임 입력 받기 창 띄우기 혹은 자동 진입 모달 처리
                 let nick = prompt('참여할 닉네임을 입력해주세요:');
                 while (!nick || !nick.trim()) {
                     nick = prompt('올바른 닉네임을 입력해주세요:');
@@ -173,7 +179,8 @@
                 document.getElementById('guest-waiting-msg').style.display = 'block';
                 document.getElementById('waiting-room-screen').style.display = 'block';
 
-                initChannel();
+                await joinRoomAsGuest();
+                subscribeRealtime();
             }
         };
 
@@ -188,7 +195,7 @@
             window.history.replaceState({}, document.title, window.location.pathname);
         }
 
-        function createRoom() {
+        async function createRoom() {
             const nick = document.getElementById('host-nickname').value.trim();
             targetLines = parseInt(document.getElementById('target-lines').value) || 3;
 
@@ -198,6 +205,15 @@
             isHost = true;
             roomId = Math.random().toString(36).substring(2, 8);
 
+            const { error } = await supabaseClient.from('rooms').insert([
+                { id: roomId, status: 'waiting', target_lines: targetLines, players: [myNickname] }
+            ]);
+
+            if (error) {
+                alert('방 생성 실패: Supabase 테이블 설정을 확인해주세요.');
+                return;
+            }
+
             const shareUrl = `${window.location.origin}${window.location.pathname}?room=${roomId}&lines=${targetLines}`;
 
             document.getElementById('share-link-input').value = shareUrl;
@@ -206,7 +222,8 @@
             document.getElementById('host-setup-screen').style.display = 'none';
             document.getElementById('waiting-room-screen').style.display = 'block';
 
-            initChannel();
+            updatePlayerListUI([myNickname]);
+            subscribeRealtime();
         }
 
         function copyLink() {
@@ -216,41 +233,51 @@
             alert('초대 링크가 복사되었습니다!');
         }
 
-        function initChannel() {
-            channel = new BroadcastChannel('bingo_room_' + roomId);
+        async function joinRoomAsGuest() {
+            const { data, error } = await supabaseClient.from('rooms').select('*').eq('id', roomId).single();
+            
+            if (error || !data) {
+                alert('존재하지 않거나 만료된 방입니다.');
+                window.location.href = window.location.pathname;
+                return;
+            }
 
-            channel.onmessage = function (event) {
-                const data = event.data;
-                if (data.type === 'JOIN') {
-                    if (!players.includes(data.name)) {
-                        players.push(data.name);
-                        updatePlayerList();
-                    }
-                    // 방장인 경우 새로 들어온 사람에게 현재 플레이어 목록 동기화 전송
-                    if (isHost) {
-                        channel.postMessage({ type: 'SYNC_PLAYERS', list: players });
-                    }
-                } else if (data.type === 'SYNC_PLAYERS') {
-                    players = data.list;
-                    updatePlayerList();
-                } else if (data.type === 'START_GAME') {
-                    startGamePlay(data.wordsMap);
-                } else if (data.type === 'GAME_OVER') {
-                    showGameOver(data.winner);
-                }
-            };
+            let players = data.players || [];
+            if (!players.includes(myNickname)) {
+                players.push(myNickname);
+                await supabaseClient.from('rooms').update({ players: players }).eq('id', roomId);
+            }
+            updatePlayerListUI(players);
 
-            // 입장 알림 전송
-            players.push(myNickname);
-            updatePlayerList();
-            channel.postMessage({ type: 'JOIN', name: myNickname });
+            if (data.status === 'playing') {
+                startTheGame();
+            }
         }
 
-        function updatePlayerList() {
+        function subscribeRealtime() {
+            supabaseClient
+                .channel('room_channel_' + roomId)
+                .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'rooms', filter: `id=eq.${roomId}` }, (payload) => {
+                    const newData = payload.new;
+                    
+                    if (newData.players) {
+                        updatePlayerListUI(newData.players);
+                    }
+
+                    if (newData.status === 'playing') {
+                        startTheGame();
+                    }
+
+                    if (newData.status === 'gameover') {
+                        showGameOver(newData.winner);
+                    }
+                })
+                .subscribe();
+        }
+
+        function updatePlayerListUI(players) {
             const listDiv = document.getElementById('player-list-box');
             listDiv.innerHTML = '';
-            // 중복 제거
-            players = [...new Set(players)];
             players.forEach(name => {
                 const item = document.createElement('div');
                 item.className = 'player-item';
@@ -259,7 +286,7 @@
             });
         }
 
-        function startHostGame() {
+        async function startHostGame() {
             const rawText = document.getElementById('my-words').value;
             let words = rawText.split(/[\n,]+/).map(w => w.trim()).filter(w => w.length > 0);
 
@@ -268,12 +295,17 @@
                 return;
             }
 
-            // 모든 참여자에게 게임 시작 신호 전송 (각자 입력한 단어나 방장이 공통으로 쓰는 구조 혹은 개별 단어 처리)
-            channel.postMessage({ type: 'START_GAME' });
-            processMyStart(words);
+            await supabaseClient.from('rooms').update({ status: 'playing' }).eq('id', roomId);
         }
 
-        function processMyStart(words) {
+        function startTheGame() {
+            const rawText = document.getElementById('my-words').value;
+            let words = rawText.split(/[\n,]+/).map(w => w.trim()).filter(w => w.length > 0);
+
+            if (words.length < 25) {
+                words = Array.from({length: 25}, (_, i) => `단어${i+1}`);
+            }
+
             words.sort(() => Math.random() - 0.5);
             currentBoardWords = words.slice(0, 25);
 
@@ -281,17 +313,6 @@
             document.getElementById('game-screen').style.display = 'block';
             document.getElementById('player-title').innerText = `${myNickname}님의 빙고판`;
             renderBoard();
-        }
-
-        function startGamePlay() {
-            const rawText = document.getElementById('my-words').value;
-            let words = rawText.split(/[\n,]+/).map(w => w.trim()).filter(w => w.length > 0);
-
-            if (words.length < 25) {
-                alert(`단어가 총 ${words.length}개입니다. 25개 이상 입력해주세요!`);
-                return;
-            }
-            processMyStart(words);
         }
 
         function renderBoard() {
@@ -340,16 +361,18 @@
             }
         }
 
-        function claimBingo() {
-            if (channel) {
-                channel.postMessage({ type: 'GAME_OVER', winner: myNickname });
-            }
+        async function claimBingo() {
+            await supabaseClient.from('rooms').update({ 
+                status: 'gameover', 
+                winner: myNickname 
+            }).eq('id', roomId);
+            
             showGameOver(myNickname);
         }
 
         function showGameOver(winnerName) {
             document.getElementById('game-over-overlay').style.display = 'flex';
-            document.getElementById('winner-text').innerText = `🎉 승자: ${winnerName}님! 🎉`;
+            document.getElementById('winner-text', winnerName).innerText = `🎉 승자: ${winnerName}님! 🎉`;
         }
     </script>
 </body>
