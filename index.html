@@ -45,6 +45,7 @@
             border-radius: 6px; cursor: pointer; width: 100%; transition: 0.2s; margin-bottom: 10px;
         }
         button:hover { background: var(--accent-hover); }
+        button:disabled { background: #57606f; cursor: not-allowed; opacity: 0.6; }
 
         .screen { display: none; width: 100%; max-width: 450px; }
         
@@ -72,7 +73,7 @@
             background: #1a1a21; border: 1px solid var(--border-color); border-radius: 6px;
             padding: 12px; min-height: 80px; max-height: 150px; overflow-y: auto; margin-bottom: 15px;
         }
-        .player-item { padding: 4px 0; border-bottom: 1px solid #2b2b36; font-size: 14px; }
+        .player-item { padding: 6px 0; border-bottom: 1px solid #2b2b36; font-size: 14px; display: flex; justify-content: space-between; align-items: center; }
 
         #game-over-overlay {
             display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%;
@@ -123,16 +124,17 @@
             <button onclick="copyLink()" style="margin-bottom: 15px;">링크 복사하기</button>
         </div>
 
-        <label style="font-size: 13px; color: #a4b0be;">참여한 플레이어 목록</label>
+        <label style="font-size: 13px; color: #a4b0be;">참여한 플레이어 및 단어 작성 현황</label>
         <div class="player-list" id="player-list-box"></div>
 
-        <div style="margin-top: 15px;" id="host-word-box">
+        <div style="margin-top: 15px;">
             <label style="font-size: 13px; color: #a4b0be;">내 빙고 단어 입력 (25개 이상, 엔터/콤마 구분)</label>
-            <textarea id="my-words" rows="4" placeholder="원하는 단어들을 직접 입력해주세요 (25개 이상)"></textarea>
+            <textarea id="my-words" rows="4" placeholder="원하는 단어들을 직접 입력해주세요 (25개 이상)" oninput="saveMyWords()"></textarea>
+            <p id="word-count-status" style="font-size: 12px; color: #ff4757; margin-top: -8px; margin-bottom: 10px;">작성된 단어: 0 / 25개 (미완료)</p>
         </div>
 
-        <button id="host-start-btn" onclick="startHostGame()" style="display: none; background: var(--bingo-checked); margin-top: 10px;">게임 시작하기</button>
-        <p id="guest-waiting-msg" style="text-align: center; color: #a4b0be; font-size: 13px; margin-top: 10px; display: none;">방장이 게임을 시작하기를 기다리는 중...</p>
+        <button id="host-start-btn" onclick="startHostGame()" disabled style="background: var(--bingo-checked); margin-top: 10px;">모든 인원이 단어를 작성해야 시작 가능</button>
+        <p id="guest-waiting-msg" style="text-align: center; color: #a4b0be; font-size: 13px; margin-top: 10px; display: none;">모든 인원이 단어를 작성하고 방장이 시작하기를 기다리는 중...</p>
     </div>
 
     <div class="screen" id="game-screen">
@@ -149,7 +151,7 @@
     <div id="game-over-overlay">
         <h2 id="winner-text" style="color: var(--bingo-checked); margin-bottom: 10px;"></h2>
         <p style="color: #a4b0be; margin-bottom: 20px;">누군가 빙고를 완성했습니다!</p>
-        <button onclick="location.reload()" style="max-width: 200px;">처음으로 돌아가기</button>
+        <button onclick="returnToWaitingRoom()" style="max-width: 250px; background: var(--bingo-checked);">대기실로 돌아가서 재판하기</button>
     </div>
 
     <script>
@@ -164,6 +166,7 @@
         let roomId = '';
         let currentBoardWords = [];
         let syncInterval = null;
+        let roomDataCache = null;
 
         window.onload = async function() {
             const urlParams = new URLSearchParams(window.location.search);
@@ -216,8 +219,11 @@
             isHost = true;
             roomId = Math.random().toString(36).substring(2, 8);
 
+            const initialPlayersObj = {};
+            initialPlayersObj[myNickname] = false; // 단어 미작성 상태로 시작
+
             const { error } = await supabaseClient.from('rooms').insert([
-                { id: roomId, status: 'waiting', target_lines: targetLines, players: [myNickname] }
+                { id: roomId, status: 'waiting', target_lines: targetLines, players_status: initialPlayersObj }
             ]);
 
             if (error) {
@@ -234,7 +240,7 @@
             document.getElementById('host-setup-screen').style.display = 'none';
             document.getElementById('waiting-room-screen').style.display = 'block';
 
-            updatePlayerListUI([myNickname]);
+            updateWaitingRoomUI(initialPlayersObj);
             startSyncLoop();
         }
 
@@ -284,19 +290,43 @@
             }
 
             targetLines = data.target_lines || 3;
-            let players = data.players || [];
+            let playersStatus = data.players_status || {};
             
-            if (!players.includes(myNickname)) {
-                players.push(myNickname);
-                const { error: updateError } = await supabaseClient.from('rooms').update({ players: players }).eq('id', roomId);
-                if (updateError) {
-                    console.error('플레이어 추가 권한 에러:', updateError.message);
-                }
+            if (!(myNickname in playersStatus)) {
+                playersStatus[myNickname] = false;
+                await supabaseClient.from('rooms').update({ players_status: playersStatus }).eq('id', roomId);
             }
-            updatePlayerListUI(players);
+            updateWaitingRoomUI(playersStatus);
 
             if (data.status === 'playing') {
-                startTheGame();
+                startTheGame(data);
+            }
+        }
+
+        // 단어 입력할 때마다 실시간으로 글자 수 체크 및 서버에 완료 여부 반영
+        async function saveMyWords() {
+            const rawText = document.getElementById('my-words').value;
+            let words = rawText.split(/[\n,]+/).map(w => w.trim()).filter(w => w.length > 0);
+            const count = words.length;
+            const statusIndicator = document.getElementById('word-count-status');
+
+            let isReady = count >= 25;
+            if (isReady) {
+                statusIndicator.innerText = `작성된 단어: ${count}개 (작성 완료 ✅)`;
+                statusIndicator.style.color = 'var(--bingo-checked)';
+            } else {
+                statusIndicator.innerText = `작성된 단어: ${count} / 25개 (미완료 ❌)`;
+                statusIndicator.style.color = 'var(--danger)';
+            }
+
+            // 서버의 players_status 업데이트
+            if (roomId && myNickname) {
+                const { data } = await supabaseClient.from('rooms').select('players_status').eq('id', roomId).maybeSingle();
+                if (data && data.players_status) {
+                    let ps = data.players_status;
+                    ps[myNickname] = isReady;
+                    await supabaseClient.from('rooms').update({ players_status: ps }).eq('id', roomId);
+                }
             }
         }
 
@@ -306,16 +336,19 @@
                 if (!roomId) return;
                 const { data, error } = await supabaseClient.from('rooms').select('*').eq('id', roomId).maybeSingle();
                 if (error || !data) return;
+                roomDataCache = data;
 
-                if (data.players) {
-                    updatePlayerListUI(data.players);
+                if (data.players_status) {
+                    updateWaitingRoomUI(data.players_status);
                 }
 
+                // 게임 시작 감지
                 if (data.status === 'playing' && document.getElementById('game-screen').style.display !== 'block') {
-                    startTheGame();
+                    startTheGame(data);
                 }
 
-                if (data.status === 'gameover' && data.winner) {
+                // 게임 종료 감지
+                if (data.status === 'gameover' && data.winner && document.getElementById('game-over-overlay').style.display !== 'flex') {
                     showGameOver(data.winner);
                 }
             }, 1500);
@@ -337,32 +370,51 @@
             }
         }
 
-        function updatePlayerListUI(players) {
+        function updateWaitingRoomUI(playersStatus) {
             const listDiv = document.getElementById('player-list-box');
             listDiv.innerHTML = '';
-            players.forEach(name => {
+            
+            let allReady = true;
+            let playerNames = Object.keys(playersStatus);
+
+            if (playerNames.length === 0) allReady = false;
+
+            playerNames.forEach(name => {
+                const isReady = playersStatus[name];
+                if (!isReady) allReady = false;
+
                 const item = document.createElement('div');
                 item.className = 'player-item';
-                item.innerText = `👤 ${name}`;
+                item.innerHTML = `<span>👤 ${name}</span> <span style="font-size: 12px; color: ${isReady ? 'var(--bingo-checked)' : 'var(--danger)'};">${isReady ? '단어 작성 완료 ✅' : '작성 중... ❌'}</span>`;
                 listDiv.appendChild(item);
             });
+
+            // 방장 시작 버튼 상태 제어
+            if (isHost) {
+                const startBtn = document.getElementById('host-start-btn');
+                if (allReady && playerNames.length > 0) {
+                    startBtn.disabled = false;
+                    startBtn.innerText = '게임 시작하기!';
+                } else {
+                    startBtn.disabled = true;
+                    startBtn.innerText = '모든 인원이 단어를 작성해야 시작 가능';
+                }
+            }
         }
 
         async function startHostGame() {
+            // 방장도 단어 작성 확인
             const rawText = document.getElementById('my-words').value;
             let words = rawText.split(/[\n,]+/).map(w => w.trim()).filter(w => w.length > 0);
-
             if (words.length < 25) {
-                alert(`단어가 총 ${words.length}개입니다. 25개 이상 입력해주세요!`);
+                alert('본인의 단어가 25개 미만입니다!');
                 return;
             }
 
-            await supabaseClient.from('rooms').update({ status: 'playing' }).eq('id', roomId);
-            startTheGame();
+            await supabaseClient.from('rooms').update({ status: 'playing', winner: null }).eq('id', roomId);
         }
 
-        function startTheGame() {
-            // 참여자도 시작할 때 단어 입력칸이 비어있다면 임의 단어 25개 생성 방지용 체크
+        function startTheGame(data) {
             const rawText = document.getElementById('my-words').value;
             let words = rawText.split(/[\n,]+/).map(w => w.trim()).filter(w => w.length > 0);
 
@@ -373,6 +425,8 @@
             words.sort(() => Math.random() - 0.5);
             currentBoardWords = words.slice(0, 25);
 
+            // 화면 전환
+            document.getElementById('game-over-overlay').style.display = 'none';
             document.getElementById('waiting-room-screen').style.display = 'none';
             document.getElementById('game-screen').style.display = 'block';
             document.getElementById('player-title').innerText = `${myNickname}님의 빙고판`;
@@ -396,6 +450,8 @@
                 });
                 boardDiv.appendChild(cell);
             });
+            document.getElementById('bingo-status').innerText = '완성된 줄: 0줄';
+            document.getElementById('bingo-claim-btn').style.display = 'none';
         }
 
         function checkBingoLogic() {
@@ -435,9 +491,46 @@
         }
 
         function showGameOver(winnerName) {
-            if (syncInterval) clearInterval(syncInterval);
             document.getElementById('game-over-overlay').style.display = 'flex';
             document.getElementById('winner-text').innerText = `🎉 승자: ${winnerName}님! 🎉`;
+        }
+
+        // 게임 종료 후 대기실로 다시 돌아가기 (방 유지)
+        async function returnToWaitingRoom() {
+            document.getElementById('game-over-overlay').style.display = 'none';
+            document.getElementById('game-screen').style.display = 'none';
+            
+            // 내 단어 준비 상태를 다시 미완료(false) 혹은 기존 유지 상태로 변경하고 대기실 화면 열기
+            if (roomId) {
+                const { data } = await supabaseClient.from('rooms').select('players_status').eq('id', roomId).maybeSingle();
+                if (data && data.players_status) {
+                    let ps = data.players_status;
+                    // 현재 내 단어 입력창의 글자 수에 맞춰 상태 갱신
+                    const rawText = document.getElementById('my-words').value;
+                    let words = rawText.split(/[\n,]+/).map(w => w.trim()).filter(w => w.length > 0);
+                    ps[myNickname] = (words.length >= 25);
+
+                    // 방장인 경우 대기실 상태로 서버 리셋
+                    if (isHost) {
+                        await supabaseClient.from('rooms').update({ 
+                            status: 'waiting', 
+                            winner: null,
+                            players_status: ps 
+                        }).eq('id', roomId);
+                    } else {
+                        await supabaseClient.from('rooms').update({ 
+                            players_status: ps 
+                        }).eq('id', roomId);
+                    }
+                }
+            }
+
+            document.getElementById('waiting-room-screen').style.display = 'block';
+            if (isHost) {
+                document.getElementById('host-start-btn').style.display = 'block';
+            } else {
+                document.getElementById('guest-waiting-msg').style.display = 'block';
+            }
         }
     </script>
 </body>
