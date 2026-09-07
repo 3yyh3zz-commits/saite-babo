@@ -147,7 +147,6 @@
         const SUPABASE_URL = 'https://mlazabosisxkhnsjvwqo.supabase.co';
         const SUPABASE_ANON_KEY = 'sb_publishable_imu1GbW4Wl_mP91NtA2NTg_w-_AVgya';
 
-        // 최신 Publishable 키 대응 설정 적용
         const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
             auth: { persistSession: false }
         });
@@ -184,6 +183,7 @@
             }
         };
 
+        // ★ 핵심: 참여자가 창을 닫거나 새로고침, 이탈할 때 즉시 서버 데이터에서 본인 닉네임 제거
         window.addEventListener('beforeunload', () => {
             removePlayerInstantly();
         });
@@ -193,6 +193,7 @@
             hasLeft = true;
 
             try {
+                // 동기식 요청 또는 가벼운 통신을 위해 fetch를 활용하거나 Supabase 쿼리 실행
                 const { data } = await supabaseClient.from('rooms').select('players_status').eq('id', roomId).maybeSingle();
                 if (data && data.players_status) {
                     let ps = data.players_status;
@@ -204,7 +205,9 @@
                         await supabaseClient.from('rooms').update({ players_status: ps }).eq('id', roomId);
                     }
                 }
-            } catch (e) {}
+            } catch (e) {
+                // 브라우저 종료 직전 비동기 예외 무시
+            }
         }
 
         function showHostSetup() {
@@ -329,7 +332,7 @@
                 if (data.status === 'waiting' && document.getElementById('waiting-room-screen').style.display !== 'block' && document.getElementById('game-screen').style.display === 'block') {
                     resetToWaitingRoomUI();
                 }
-            }, 1000);
+            }, 1000); // 1초 간격 동기화
         }
 
         function copyLink() {
