@@ -67,7 +67,7 @@
         }
         .btn-secondary { background: #57606f; }
         .btn-secondary:hover { background: #747d8c; }
-        .btn-bingo { background: var(--danger); font-size: 16px; display: none; animation: pulse 1s infinite; width: 100%;}
+        .btn-bingo { background: var(--danger); font-size: 16px; display: none; animation: pulse 1s infinite; width: 100%; }
         @keyframes pulse { 0% { transform: scale(1); } 50% { transform: scale(1.02); } 100% { transform: scale(1); } }
 
         .player-list {
@@ -100,9 +100,6 @@
         <label style="font-size: 13px; color: #a4b0be;">방장 닉네임</label>
         <input type="text" id="host-nickname" placeholder="닉네임 입력">
 
-        <label style="font-size: 13px; color: #a4b0be;">게임 주제 (예: 아이돌, 개발 관련, 일상 등)</label>
-        <input type="text" id="game-topic-input" placeholder="예: 무한도전 명대사">
-
         <label style="font-size: 13px; color: #a4b0be;">목표 빙고 줄 수</label>
         <input type="number" id="target-lines-input" value="3" min="1" max="12">
         
@@ -124,14 +121,26 @@
     <!-- 대기실 화면 -->
     <div class="container screen" id="waiting-room-screen">
         <h3>대기실</h3>
-        <div id="room-topic-badge" style="background: #1a1a21; border: 1px solid var(--accent); padding: 10px; border-radius: 6px; text-align: center; margin-bottom: 15px; font-weight: bold; color: var(--accent);">
-            주제: 불러오는 중...
-        </div>
-
+        
+        <!-- 초대 링크 영역 -->
         <div id="share-link-area" style="margin-bottom: 15px; display: none;">
             <p style="font-size: 13px; color: #a4b0be; margin-bottom: 5px;">초대 링크</p>
             <input type="text" id="share-link-input" readonly style="background: #111; color: #2ed573; text-align: center; font-weight: bold; margin-bottom: 8px;">
-            <button onclick="copyLink()" style="margin-bottom: 15px;">링크 복사하기</button>
+            <button onclick="copyLink()" style="margin-bottom: 10px;">링크 복사하기</button>
+        </div>
+
+        <!-- 주제 설정/표시 영역 -->
+        <div id="topic-container" style="margin-bottom: 15px;">
+            <p style="font-size: 13px; color: #a4b0be; margin-bottom: 5px;">게임 주제</p>
+            <!-- 방장 전용 주제 수정 폼 -->
+            <div id="host-topic-area" style="display: none; display: flex; gap: 6px; margin-bottom: 5px;">
+                <input type="text" id="room-topic-input" placeholder="예: 무한도전 명대사" style="margin-bottom: 0;">
+                <button onclick="updateRoomTopic()" style="width: 90px; margin-bottom: 0; padding: 0;">주제 저장</button>
+            </div>
+            <!-- 참여자 전용 주제 표시 뱃지 -->
+            <div id="guest-topic-badge" style="background: #1a1a21; border: 1px solid var(--accent); padding: 12px; border-radius: 6px; text-align: center; font-weight: bold; color: var(--accent); display: none;">
+                주제: 불러오는 중...
+            </div>
         </div>
 
         <label style="font-size: 13px; color: #a4b0be;">참여한 플레이어 및 단어 작성 현황</label>
@@ -168,18 +177,9 @@
     </div>
 
     <script>
-        // 우클릭 방지
-        document.addEventListener('contextmenu', function(e) {
-            e.preventDefault();
-        });
-
-        // F12 및 주요 개발자 도구 단축키 방지
+        document.addEventListener('contextmenu', function(e) { e.preventDefault(); });
         document.addEventListener('keydown', function(e) {
-            if (
-                e.key === 'F12' ||
-                (e.ctrlKey && e.shiftKey && (e.key === 'I' || e.key === 'J' || e.key === 'C')) ||
-                (e.ctrlKey && e.key === 'U')
-            ) {
+            if (e.key === 'F12' || (e.ctrlKey && e.shiftKey && (e.key === 'I' || e.key === 'J' || e.key === 'C')) || (e.ctrlKey && e.key === 'U')) {
                 e.preventDefault();
                 return false;
             }
@@ -219,8 +219,10 @@
                         const shareUrl = window.location.href;
                         document.getElementById('share-link-input').value = shareUrl;
                         document.getElementById('share-link-area').style.display = 'block';
+                        document.getElementById('host-topic-area').style.display = 'flex';
                         document.getElementById('host-start-btn').style.display = 'block';
                     } else {
+                        document.getElementById('guest-topic-badge').style.display = 'block';
                         document.getElementById('guest-waiting-msg').style.display = 'block';
                     }
                     document.getElementById('waiting-room-screen').style.display = 'block';
@@ -239,7 +241,13 @@
             if (data) {
                 targetLines = data.target_lines || 3;
                 gameTopic = data.topic || '자유 주제';
-                updateTopicUI(gameTopic);
+                
+                if (isHost) {
+                    document.getElementById('room-topic-input').value = gameTopic;
+                } else {
+                    document.getElementById('guest-topic-badge').innerText = `🎯 주제: ${gameTopic}`;
+                }
+                updateGameTopicDisplay(gameTopic);
 
                 let playersStatus = data.players_status || {};
                 let heartbeats = data.heartbeats || {};
@@ -290,23 +298,16 @@
             localStorage.removeItem(`bingo_isHost_${roomId}`);
         }
 
-        // 페이지를 떠나거나 탭을 닫을 때 즉시 목록에서 제거
         window.addEventListener('beforeunload', () => {
             if (!roomId || !myNickname) return;
-            try {
-                const xhr = new XMLHttpRequest();
-                // 동기식 요청으로 브라우저 종료 직전 서버 반영 시도
-                // (Supabase REST API 직접 호출)
-                // 브라우저 보안상 비동기 처리나 sendBeacon이 안전하므로 localStorage 정리 후 하트비트 만료로 자동 삭제되도록 유도
-            } catch(e) {}
             localStorage.removeItem(`bingo_nick_${roomId}`);
             localStorage.removeItem(`bingo_isHost_${roomId}`);
         });
 
         async function createRoom() {
             const nick = document.getElementById('host-nickname').value.trim();
-            gameTopic = document.getElementById('game-topic-input').value.trim() || '자유 주제';
             targetLines = parseInt(document.getElementById('target-lines-input').value) || 3;
+            gameTopic = '자유 주제';
 
             if (!nick) { alert('방장 닉네임을 입력해주세요!'); return; }
 
@@ -343,15 +344,29 @@
 
             document.getElementById('share-link-input').value = shareUrl;
             document.getElementById('share-link-area').style.display = 'block';
+            document.getElementById('host-topic-area').style.display = 'flex';
+            document.getElementById('room-topic-input').value = gameTopic;
             document.getElementById('host-start-btn').style.display = 'block';
             
             document.getElementById('host-setup-screen').style.display = 'none';
             document.getElementById('waiting-room-screen').style.display = 'block';
 
-            updateTopicUI(gameTopic);
+            updateGameTopicDisplay(gameTopic);
             updateWaitingRoomUI(initialPlayersObj);
             startSyncLoop();
             startHeartbeat();
+        }
+
+        async function updateRoomTopic() {
+            const newTopic = document.getElementById('room-topic-input').value.trim() || '자유 주제';
+            const { error } = await supabaseClient.from('rooms').update({ topic: newTopic }).eq('id', roomId);
+            if (error) {
+                alert('주제 업데이트 실패: ' + error.message);
+            } else {
+                gameTopic = newTopic;
+                updateGameTopicDisplay(gameTopic);
+                alert('게임 주제가 변경되었습니다!');
+            }
         }
 
         async function joinRoomWithNickname() {
@@ -376,7 +391,8 @@
 
             targetLines = data.target_lines || 3;
             gameTopic = data.topic || '자유 주제';
-            updateTopicUI(gameTopic);
+            document.getElementById('guest-topic-badge').innerText = `🎯 주제: ${gameTopic}`;
+            updateGameTopicDisplay(gameTopic);
 
             let playersStatus = data.players_status || {};
             let heartbeats = data.heartbeats || {};
@@ -390,6 +406,7 @@
             }).eq('id', roomId);
 
             document.getElementById('guest-setup-screen').style.display = 'none';
+            document.getElementById('guest-topic-badge').style.display = 'block';
             document.getElementById('guest-waiting-msg').style.display = 'block';
             document.getElementById('waiting-room-screen').style.display = 'block';
 
@@ -402,8 +419,7 @@
             }
         }
 
-        function updateTopicUI(topic) {
-            document.getElementById('room-topic-badge').innerText = `🎯 게임 주제: ${topic}`;
+        function updateGameTopicDisplay(topic) {
             document.getElementById('game-topic-display').innerText = `🎯 주제: ${topic}`;
         }
 
@@ -470,7 +486,10 @@
 
                 if (data.topic && data.topic !== gameTopic) {
                     gameTopic = data.topic;
-                    updateTopicUI(gameTopic);
+                    if (!isHost) {
+                        document.getElementById('guest-topic-badge').innerText = `🎯 주제: ${gameTopic}`;
+                    }
+                    updateGameTopicDisplay(gameTopic);
                 }
 
                 let playersStatus = data.players_status || {};
