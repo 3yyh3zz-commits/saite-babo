@@ -132,7 +132,7 @@
         <!-- 주제 설정/표시 영역 -->
         <div id="topic-container" style="margin-bottom: 15px;">
             <p style="font-size: 13px; color: #a4b0be; margin-bottom: 5px;">게임 주제</p>
-            <!-- 방장 전용 주제 수정 폼 (참여자에게는 절대 보이지 않음) -->
+            <!-- 방장 전용 주제 수정 폼 -->
             <div id="host-topic-area" style="display: none; gap: 6px; margin-bottom: 5px;">
                 <input type="text" id="room-topic-input" placeholder="예: 무한도전 명대사" style="margin-bottom: 0;">
                 <button onclick="updateRoomTopic()" style="width: 90px; margin-bottom: 0; padding: 0;">주제 저장</button>
@@ -333,7 +333,8 @@
                     target_lines: targetLines, 
                     players_status: initialPlayersObj,
                     heartbeats: initialHeartbeats,
-                    current_clue: '시작 대기 중'
+                    current_clue: '시작 대기 중',
+                    used_clues: []
                 }
             ]);
 
@@ -361,8 +362,8 @@
         }
 
         async function updateRoomTopic() {
-            if (!isHost) return; // 방장이 아니면 실행 차단
-            const newTopic = document.getElementById('room-topic-input').value.trim() || '자유 주제';
+            if (!isHost) return;
+            const newTopic = document.getElementById('room-topic-input'].value.trim() || '자유 주제';
             const { error } = await supabaseClient.from('rooms').update({ topic: newTopic }).eq('id', roomId);
             if (error) {
                 alert('주제 업데이트 실패: ' + error.message);
@@ -556,6 +557,7 @@
 
         function updateWaitingRoomUI(playersStatus) {
             const listDiv = document.getElementById('player-list-box');
+            listDiv.innerHTML = {};
             listDiv.innerHTML = '';
             
             let allReady = true;
@@ -592,28 +594,48 @@
                 return;
             }
 
+            // 모든 보드 단어를 합쳐서 주제 연관 검증 필터링 (간단히 키워드 포함 여부 또는 전체 수집)
             const rawText = document.getElementById('my-words').value;
             let words = rawText.split(/[\n,]+/).map(w => w.trim()).filter(w => w.length > 0);
+            
             if (words.length === 0) words = [gameTopic];
+
             const firstClue = words[Math.floor(Math.random() * words.length)];
 
             await supabaseClient.from('rooms').update({ 
                 status: 'playing', 
                 winner: null,
-                current_clue: firstClue 
+                current_clue: firstClue,
+                used_clues: [firstClue]
             }).eq('id', roomId);
         }
 
         async function nextClue() {
             if (!isHost) return;
+
+            // 최신 room 상태 가져오기 (이미 사용된 제시어 목록 확인 위함)
+            const { data } = await supabaseClient.from('rooms').select('used_clues').eq('id', roomId).maybeSingle();
+            let usedClues = data && data.used_clues ? data.used_clues : [];
+
+            // 내 화면에 적힌 단어들 기준
             const rawText = document.getElementById('my-words').value;
             let words = rawText.split(/[\n,]+/).map(w => w.trim()).filter(w => w.length > 0);
             if (words.length === 0) words = [gameTopic];
-            
-            const randomClue = words[Math.floor(Math.random() * words.length)];
+
+            // 이미 나왔던 제시어(usedClues)를 제외한 단어 필터링
+            let availableWords = words.filter(w => !usedClues.includes(w));
+
+            if (availableWords.length === 0) {
+                alert('사용 가능한 모든 제시어가 소진되었습니다!');
+                return;
+            }
+
+            const randomClue = availableWords[Math.floor(Math.random() * availableWords.length)];
+            usedClues.push(randomClue);
 
             await supabaseClient.from('rooms').update({ 
-                current_clue: randomClue 
+                current_clue: randomClue,
+                used_clues: usedClues
             }).eq('id', roomId);
         }
 
@@ -743,7 +765,8 @@
                         status: 'waiting', 
                         winner: null,
                         players_status: ps,
-                        current_clue: '시작 대기 중'
+                        current_clue: '시작 대기 중',
+                        used_clues: []
                     }).eq('id', roomId);
                 }
             }
