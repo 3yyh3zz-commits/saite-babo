@@ -154,6 +154,7 @@
         let roomId = '';
         let currentBoardWords = [];
         let syncInterval = null;
+        let isLeaving = false; // 중복 실행 방지
 
         window.onload = async function() {
             const urlParams = new URLSearchParams(window.location.search);
@@ -179,25 +180,20 @@
             }
         };
 
-        // 페이지를 떠나거나 새로고침/창을 닫을 때 목록에서 본인 제거
+        // 브라우저를 닫거나 새로고침 할 때 작동
         window.addEventListener('beforeunload', function () {
-            if (roomId && myNickname) {
-                navigator.sendBeacon ? true : removePlayerSync(); // 안정적인 비동기 요청 처리 용도 겸용
-                // 동기적으로 데이터를 지우기 위한 fetch 활용 (keepalive)
-                const url = `${SUPABASE_URL}/rest/v1/rooms?id=eq.${roomId}`;
-                // 서버 부하 및 안정성을 위해 실시간 주기 루프나 leave 함수 호출
-                leaveRoomCleanup();
-            }
+            leaveRoomCleanup();
         });
 
         async function leaveRoomCleanup() {
-            if (!roomId || !myNickname) return;
-            const { data } = await supabaseClient.from('rooms').select('players_status, status').eq('id', roomId).maybeSingle();
+            if (!roomId || !myNickname || isLeaving) return;
+            isLeaving = true;
+
+            const { data } = await supabaseClient.from('rooms').select('players_status').eq('id', roomId).maybeSingle();
             if (data && data.players_status) {
                 let ps = data.players_status;
                 delete ps[myNickname];
-                
-                // 만약 방장이 나가고 방에 사람이 아예 없으면 방 삭제 또는 처리 가능
+
                 if (Object.keys(ps).length === 0) {
                     await supabaseClient.from('rooms').delete().eq('id', roomId);
                 } else {
@@ -308,7 +304,6 @@
                 if (!roomId) return;
                 const { data, error } = await supabaseClient.from('rooms').select('*').eq('id', roomId).maybeSingle();
                 if (error || !data) {
-                    // 방이 사라졌거나 폭파된 경우 처리
                     alert('방이 종료되었거나 삭제되었습니다.');
                     window.location.href = window.location.pathname;
                     return;
