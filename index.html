@@ -223,8 +223,8 @@
             isHost = true;
             roomId = Math.random().toString(36).substring(2, 8);
 
-            // upsert를 사용하여 기존 데이터 충돌 방지 및 안전한 저장
-            const { error } = await supabaseClient.from('rooms').upsert([
+            // 명시적으로 insert를 사용하여 방 생성
+            const { error } = await supabaseClient.from('rooms').insert([
                 { id: roomId, status: 'waiting', target_lines: targetLines, players: [myNickname] }
             ]);
 
@@ -328,8 +328,17 @@
         function copyLink() {
             const input = document.getElementById('share-link-input');
             input.select();
-            document.execCommand('copy');
-            alert('초대 링크가 복사되었습니다!');
+            if (navigator.clipboard && navigator.clipboard.writeText) {
+                navigator.clipboard.writeText(input.value).then(() => {
+                    alert('초대 링크가 복사되었습니다!');
+                }).catch(() => {
+                    document.execCommand('copy');
+                    alert('초대 링크가 복사되었습니다!');
+                });
+            } else {
+                document.execCommand('copy');
+                alert('초대 링크가 복사되었습니다!');
+            }
         }
 
         function updatePlayerListUI(players) {
