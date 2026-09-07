@@ -132,8 +132,8 @@
         <!-- 주제 설정/표시 영역 -->
         <div id="topic-container" style="margin-bottom: 15px;">
             <p style="font-size: 13px; color: #a4b0be; margin-bottom: 5px;">게임 주제</p>
-            <!-- 방장 전용 주제 수정 폼 -->
-            <div id="host-topic-area" style="display: none; display: flex; gap: 6px; margin-bottom: 5px;">
+            <!-- 방장 전용 주제 수정 폼 (참여자에게는 절대 보이지 않음) -->
+            <div id="host-topic-area" style="display: none; gap: 6px; margin-bottom: 5px;">
                 <input type="text" id="room-topic-input" placeholder="예: 무한도전 명대사" style="margin-bottom: 0;">
                 <button onclick="updateRoomTopic()" style="width: 90px; margin-bottom: 0; padding: 0;">주제 저장</button>
             </div>
@@ -361,6 +361,7 @@
         }
 
         async function updateRoomTopic() {
+            if (!isHost) return; // 방장이 아니면 실행 차단
             const newTopic = document.getElementById('room-topic-input').value.trim() || '자유 주제';
             const { error } = await supabaseClient.from('rooms').update({ topic: newTopic }).eq('id', roomId);
             if (error) {
@@ -519,7 +520,6 @@
                     updateWaitingRoomUI(playersStatus);
                 }
 
-                // 현재 제시어 업데이트 반영
                 if (data.current_clue) {
                     document.getElementById('current-clue-display').innerText = data.current_clue;
                 }
@@ -586,12 +586,12 @@
         }
 
         async function startHostGame() {
+            if (!isHost) return;
             if (!checkIsReady()) {
                 alert('본인의 단어가 25개 미만입니다!');
                 return;
             }
 
-            // 첫 번째 제시어 선정 (내 단어나 주제 기반 키워드 중 무작위)
             const rawText = document.getElementById('my-words').value;
             let words = rawText.split(/[\n,]+/).map(w => w.trim()).filter(w => w.length > 0);
             if (words.length === 0) words = [gameTopic];
