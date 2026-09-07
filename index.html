@@ -107,13 +107,13 @@
         <button class="btn-secondary" onclick="backToMain()">뒤로 가기</button>
     </div>
 
-    <!-- 참여자 닉네임 입력 화면 (링크로 들어왔을 때 표시) -->
+    <!-- 참여자 닉네임 입력 화면 (링크로 들어왔을 때 반드시 거치는 화면) -->
     <div class="container screen" id="guest-setup-screen">
         <h3>게임 참여하기</h3>
-        <p style="font-size: 13px; color: #a4b0be; margin-bottom: 15px;">초대받은 빙고 방에 입장합니다. 닉네임을 입력해주세요!</p>
+        <p style="font-size: 13px; color: #a4b0be; margin-bottom: 15px;">초대받은 빙고 방에 입장합니다. 사용할 닉네임을 입력해주세요!</p>
         
         <label style="font-size: 13px; color: #a4b0be;">내 닉네임</label>
-        <input type="text" id="guest-nickname" placeholder="사용할 닉네임 입력">
+        <input type="text" id="guest-nickname" placeholder="닉네임 입력">
         
         <button onclick="joinRoomWithNickname()">대기실 들어가기</button>
     </div>
@@ -179,14 +179,13 @@
             roomId = urlParams.get('room');
 
             if (roomId) {
-                // 이미 이 기기(브라우저)에 저장된 닉네임이 있는지 확인 (새로고침 대응)
+                document.getElementById('mode-select-screen').style.display = 'none';
+
+                // 이 브라우저에 이미 닉네임이 저장되어 있는지 확인 (새로고침 대응)
                 const savedNick = localStorage.getItem(`bingo_nick_${roomId}`);
                 const savedRole = localStorage.getItem(`bingo_isHost_${roomId}`) === 'true';
 
-                document.getElementById('mode-select-screen').style.display = 'none';
-
                 if (savedNick) {
-                    // 새로고침 등으로 다시 들어온 경우 바로 대기실로 복귀
                     myNickname = savedNick;
                     isHost = savedRole;
 
@@ -203,7 +202,7 @@
                     await restoreMySession();
                     startSyncLoop();
                 } else {
-                    // ★ 링크로 처음 접속한 경우: 닉네임 입력 화면 띄우기
+                    // ★ 링크로 처음 들어온 경우: 무조건 닉네임 입력 화면 표시
                     document.getElementById('guest-setup-screen').style.display = 'block';
                 }
             }
@@ -281,6 +280,7 @@
             startSyncLoop();
         }
 
+        // 참여자가 닉네임 입력 후 대기실로 들어갈 때 실행
         async function joinRoomWithNickname() {
             const nickInput = document.getElementById('guest-nickname').value.trim();
             if (!nickInput) {
