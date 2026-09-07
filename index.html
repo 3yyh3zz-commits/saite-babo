@@ -86,7 +86,6 @@
 
     <h1>실시간 커스텀 단어 빙고</h1>
 
-    <!-- 메인 화면 ('방 참여하기' 버튼 삭제됨) -->
     <div class="container" id="mode-select-screen">
         <h3>게임 모드</h3>
         <button onclick="showHostSetup()">방 만들기</button>
@@ -139,7 +138,7 @@
 
     <div id="game-over-overlay">
         <h2 id="winner-text" style="color: var(--bingo-checked); margin-bottom: 10px;"></h2>
-        <p style="color: #a4b0be; margin-bottom: 20px;">누군가 빙고를 완성했습니다!</p>
+        <p id="winner-sub-text" style="color: #a4b0be; margin-bottom: 20px;">누군가 빙고를 완성했습니다!</p>
         <button onclick="returnToWaitingRoom()" style="max-width: 250px; background: var(--bingo-checked);">대기실로 돌아가서 재판하기</button>
     </div>
 
@@ -331,7 +330,6 @@
                 listDiv.appendChild(item);
             });
 
-            // 방장 시작 버튼 상태 제어 (참여자 포함 모두가 25개 채워야 활성화)
             if (isHost) {
                 const startBtn = document.getElementById('host-start-btn');
                 if (allReady && playerNames.length > 0) {
@@ -433,11 +431,14 @@
         function showGameOver(winnerName) {
             document.getElementById('game-over-overlay').style.display = 'flex';
             
-            // 승리한 본인 화면에는 '승리 추카!!' 문구 출력
+            const subText = document.getElementById('winner-sub-text');
             if (winnerName === myNickname) {
                 document.getElementById('winner-text').innerText = `🎉 승리 추카!! 🎉`;
+                subText.style.display = 'none'; // 본인 화면에는 '누군가 빙고를 완성했습니다' 문구 삭제
             } else {
                 document.getElementById('winner-text').innerText = `🎉 승자: ${winnerName}님! 🎉`;
+                subText.style.display = 'block';
+                subText.innerText = '누군가 빙고를 완성했습니다!';
             }
         }
 
@@ -445,13 +446,16 @@
             document.getElementById('game-over-overlay').style.display = 'none';
             document.getElementById('game-screen').style.display = 'none';
             
+            // 단어 입력창을 빈칸으로 초기화
+            document.getElementById('my-words').value = '';
+            document.getElementById('word-count-status').innerText = '작성된 단어: 0 / 25개 (미완료)';
+            document.getElementById('word-count-status').style.color = 'var(--danger)';
+
             if (roomId) {
                 const { data } = await supabaseClient.from('rooms').select('players_status').eq('id', roomId).maybeSingle();
                 if (data && data.players_status) {
                     let ps = data.players_status;
-                    const rawText = document.getElementById('my-words').value;
-                    let words = rawText.split(/[\n,]+/).map(w => w.trim()).filter(w => w.length > 0);
-                    ps[myNickname] = (words.length >= 25);
+                    ps[myNickname] = false; // 빈칸이 되었으므로 미완료 상태로 전환
 
                     if (isHost) {
                         await supabaseClient.from('rooms').update({ 
