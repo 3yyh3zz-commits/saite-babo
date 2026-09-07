@@ -100,7 +100,7 @@
         <input type="text" id="host-nickname" placeholder="닉네임 입력">
 
         <label style="font-size: 13px; color: #a4b0be;">목표 빙고 줄 수</label>
-        <input type="number" id="target-lines" value="3" min="1" max="12">
+        <input type="number" id="target-lines-input" value="3" min="1" max="12">
         
         <button onclick="createRoom()">랜덤 링크 생성 및 방 들어가기</button>
         <button class="btn-secondary" onclick="backToMain()">뒤로 가기</button>
@@ -160,9 +160,9 @@
     </div>
 
     <script>
-        // ======= [본인의 수파베이스 정보 입력] =======
-        const SUPABASE_URL = 'YOUR_SUPABASE_URL';
-        const SUPABASE_ANON_KEY = 'YOUR_SUPABASE_ANON_KEY';
+        // ======= [수파베이스 임시 설정값 적용 완료] =======
+        const SUPABASE_URL = 'https://xyzcompany.supabase.co';
+        const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inh5emNvbXBhbnkiLCJyb2xlIjoiYW5vbiIsImlhdCI6MTY0MjQ4MDAwMCwiZXhwIjoyMDU4MDU2MDAwfQ.mockkey';
         // ===========================================
 
         const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
@@ -215,7 +215,7 @@
 
         async function createRoom() {
             const nick = document.getElementById('host-nickname').value.trim();
-            targetLines = parseInt(document.getElementById('target-lines').value) || 3;
+            targetLines = parseInt(document.getElementById('target-lines-input').value) || 3;
 
             if (!nick) { alert('방장 닉네임을 입력해주세요!'); return; }
 
@@ -223,7 +223,6 @@
             isHost = true;
             roomId = Math.random().toString(36).substring(2, 8);
 
-            // 명시적으로 insert를 사용하여 방 생성
             const { error } = await supabaseClient.from('rooms').insert([
                 { id: roomId, status: 'waiting', target_lines: targetLines, players: [myNickname] }
             ]);
