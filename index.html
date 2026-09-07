@@ -87,12 +87,14 @@
 
     <h1>실시간 커스텀 단어 빙고</h1>
 
+    <!-- 메인 화면 -->
     <div class="container" id="mode-select-screen">
         <h3>게임 모드</h3>
         <button onclick="showHostSetup()">방 만들기</button>
         <p style="font-size: 12px; color: #a4b0be; text-align: center; margin-top: 5px;">참여자는 공유받은 링크를 통해 접속할 수 있습니다.</p>
     </div>
 
+    <!-- 방장 설정 화면 -->
     <div class="container screen" id="host-setup-screen">
         <h3>방 만들기 (방장)</h3>
         <label style="font-size: 13px; color: #a4b0be;">방장 닉네임</label>
@@ -105,6 +107,18 @@
         <button class="btn-secondary" onclick="backToMain()">뒤로 가기</button>
     </div>
 
+    <!-- 참여자 닉네임 입력 화면 (링크로 들어왔을 때 표시) -->
+    <div class="container screen" id="guest-setup-screen">
+        <h3>게임 참여하기</h3>
+        <p style="font-size: 13px; color: #a4b0be; margin-bottom: 15px;">초대받은 빙고 방에 입장합니다. 닉네임을 입력해주세요!</p>
+        
+        <label style="font-size: 13px; color: #a4b0be;">내 닉네임</label>
+        <input type="text" id="guest-nickname" placeholder="사용할 닉네임 입력">
+        
+        <button onclick="joinRoomWithNickname()">대기실 들어가기</button>
+    </div>
+
+    <!-- 대기실 화면 -->
     <div class="container screen" id="waiting-room-screen">
         <h3>대기실</h3>
         <div id="share-link-area" style="margin-bottom: 15px; display: none;">
@@ -122,10 +136,11 @@
             <p id="word-count-status" style="font-size: 12px; color: #ff4757; margin-top: -8px; margin-bottom: 10px;">작성된 단어: 0 / 25개 (미완료)</p>
         </div>
 
-        <button id="host-start-btn" onclick="startHostGame()" disabled style="background: var(--bingo-checked); margin-top: 10px;">모든 인원이 단어를 작성해야 시작 가능</button>
+        <button id="host-start-btn" onclick="startHostGame()" disabled style="background: var(--bingo-checked); margin-top: 10px; display: none;">모든 인원이 단어를 작성해야 시작 가능</button>
         <p id="guest-waiting-msg" style="text-align: center; color: #a4b0be; font-size: 13px; margin-top: 10px; display: none;">모든 인원이 단어를 작성하고 방장이 시작하기를 기다리는 중...</p>
     </div>
 
+    <!-- 게임 화면 -->
     <div class="screen" id="game-screen">
         <div class="container" style="max-width: 100%;">
             <div class="status-bar">
@@ -137,6 +152,7 @@
         </div>
     </div>
 
+    <!-- 게임 오버 모달 -->
     <div id="game-over-overlay">
         <h2 id="winner-text" style="color: var(--bingo-checked); margin-bottom: 10px;"></h2>
         <p id="winner-sub-text" style="color: #a4b0be; margin-bottom: 20px;">누군가 빙고를 완성했습니다!</p>
@@ -164,15 +180,15 @@
             const lines = urlParams.get('lines');
 
             if (roomId) {
-                // 이미 이 기기(브라우저)에서 저장된 닉네임이 있는지 확인 (새로고침 대응)
+                targetLines = parseInt(lines) || 3;
+                // 이미 이 브라우저에 저장된 닉네임이 있는지 확인 (새로고침 대응)
                 const savedNick = localStorage.getItem(`bingo_nick_${roomId}`);
                 const savedRole = localStorage.getItem(`bingo_isHost_${roomId}`) === 'true';
 
                 if (savedNick) {
-                    // 새로고침 등으로 다시 들어온 경우
+                    // 새로고침 등으로 다시 접속한 경우 바로 대기실로 복귀
                     myNickname = savedNick;
                     isHost = savedRole;
-                    targetLines = parseInt(lines) || 3;
 
                     document.getElementById('mode-select-screen').style.display = 'none';
                     if (isHost) {
@@ -187,26 +203,10 @@
 
                     await restoreMySession();
                     startSyncLoop();
-                } else if (lines) {
-                    // ★ 링크로 처음 들어온 참여자: 닉네임 입력 창 띄우기
-                    targetLines = parseInt(lines) || 3;
+                } else {
+                    // 링크로 처음 접속한 경우 -> 닉네임 입력 화면 띄우기
                     document.getElementById('mode-select-screen').style.display = 'none';
-                    
-                    let nick = prompt('참여할 닉네임을 입력해주세요:');
-                    while (!nick || !nick.trim()) {
-                        nick = prompt('올바른 닉네임을 입력해주세요:');
-                    }
-                    myNickname = nick.trim();
-                    isHost = false;
-
-                    localStorage.setItem(`bingo_nick_${roomId}`, myNickname);
-                    localStorage.setItem(`bingo_isHost_${roomId}`, 'false');
-
-                    document.getElementById('guest-waiting-msg').style.display = 'block';
-                    document.getElementById('waiting-room-screen').style.display = 'block';
-
-                    await joinRoomAsGuest();
-                    startSyncLoop();
+                    document.getElementById('guest-setup-screen').style.display = 'block';
                 }
             }
         };
@@ -283,11 +283,22 @@
             startSyncLoop();
         }
 
-        async function joinRoomAsGuest() {
+        async function joinRoomWithNickname() {
+            const nickInput = document.getElementById('guest-nickname').value.trim();
+            if (!nickInput) {
+                alert('사용할 닉네임을 입력해주세요!');
+                return;
+            }
+
+            myNickname = nickInput;
+            isHost = false;
+
+            localStorage.setItem(`bingo_nick_${roomId}`, myNickname);
+            localStorage.setItem(`bingo_isHost_${roomId}`, 'false');
+
             const { data, error } = await supabaseClient.from('rooms').select('*').eq('id', roomId).maybeSingle();
-            
             if (error || !data) {
-                alert('서버에서 방을 찾을 수 없습니다.');
+                alert('존재하지 않거나 만료된 방입니다.');
                 window.location.href = window.location.pathname;
                 return;
             }
@@ -299,7 +310,13 @@
                 playersStatus[myNickname] = false;
                 await supabaseClient.from('rooms').update({ players_status: playersStatus }).eq('id', roomId);
             }
+
+            document.getElementById('guest-setup-screen').style.display = 'none';
+            document.getElementById('guest-waiting-msg').style.display = 'block';
+            document.getElementById('waiting-room-screen').style.display = 'block';
+
             updateWaitingRoomUI(playersStatus);
+            startSyncLoop();
 
             if (data.status === 'playing') {
                 startTheGame();
