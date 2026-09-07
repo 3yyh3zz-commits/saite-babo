@@ -107,7 +107,7 @@
         <button class="btn-secondary" onclick="backToMain()">뒤로 가기</button>
     </div>
 
-    <!-- 참여자 닉네임 입력 화면 (링크로 들어왔을 때 반드시 거치는 화면) -->
+    <!-- 참여자 닉네임 입력 화면 -->
     <div class="container screen" id="guest-setup-screen">
         <h3>게임 참여하기</h3>
         <p style="font-size: 13px; color: #a4b0be; margin-bottom: 15px;">초대받은 빙고 방에 입장합니다. 사용할 닉네임을 입력해주세요!</p>
@@ -132,7 +132,7 @@
 
         <div style="margin-top: 15px;">
             <label style="font-size: 13px; color: #a4b0be;">내 빙고 단어 입력 (25개 이상, 엔터/콤마 구분)</label>
-            <textarea id="my-words" rows="4" placeholder="원하는 단어들을 직접 입력해주세요 (25개 이상)" oninput="saveMyWords()"></textarea>
+            <textarea id="my-words" rows="4" placeholder="원하는 단어들을 직접 입력해주세요 (25개 이상)" oninput="updateMyWordStatusOnly()"></textarea>
             <p id="word-count-status" style="font-size: 12px; color: #ff4757; margin-top: -8px; margin-bottom: 10px;">작성된 단어: 0 / 25개 (미완료)</p>
         </div>
 
@@ -173,6 +173,7 @@
         let roomId = '';
         let currentBoardWords = [];
         let syncInterval = null;
+        let heartbeatInterval = null;
 
         window.onload = async function() {
             const urlParams = new URLSearchParams(window.location.search);
@@ -181,7 +182,6 @@
             if (roomId) {
                 document.getElementById('mode-select-screen').style.display = 'none';
 
-                // 이 브라우저에 이미 닉네임이 저장되어 있는지 확인 (새로고침 대응)
                 const savedNick = localStorage.getItem(`bingo_nick_${roomId}`);
                 const savedRole = localStorage.getItem(`bingo_isHost_${roomId}`) === 'true';
 
@@ -201,8 +201,8 @@
 
                     await restoreMySession();
                     startSyncLoop();
+                    startHeartbeat();
                 } else {
-                    // ★ 링크로 처음 들어온 경우: 무조건 닉네임 입력 화면 표시
                     document.getElementById('guest-setup-screen').style.display = 'block';
                 }
             }
@@ -213,10 +213,16 @@
             if (data) {
                 targetLines = data.target_lines || 3;
                 let playersStatus = data.players_status || {};
-                if (!(myNickname in playersStatus)) {
-                    playersStatus[myNickname] = false;
-                }
-                await supabaseClient.from('rooms').update({ players_status: playersStatus }).eq('id', roomId);
+                let heartbeats = data.heartbeats || {};
+
+                playersStatus[myNickname] = checkIsReady();
+                heartbeats[myNickname] = Date.now();
+
+                await supabaseClient.from('rooms').update({ 
+                    players_status: playersStatus,
+                    heartbeats: heartbeats 
+                }).eq('id', roomId);
+
                 updateWaitingRoomUI(playersStatus);
 
                 if (data.status === 'playing') {
@@ -231,15 +237,36 @@
         }
 
         function backToMain() {
-            if (roomId) {
-                localStorage.removeItem(`bingo_nick_${roomId}`);
-                localStorage.removeItem(`bingo_isHost_${roomId}`);
-            }
+            clearSessionData();
             document.querySelectorAll('.screen').forEach(el => el.style.display = 'none');
             document.getElementById('mode-select-screen').style.display = 'block';
             if (syncInterval) clearInterval(syncInterval);
+            if (heartbeatInterval) clearInterval(heartbeatInterval);
             window.history.replaceState({}, document.title, window.location.pathname);
         }
+
+        async function clearSessionData() {
+            if (!roomId || !myNickname) return;
+            try {
+                const { data } = await supabaseClient.from('rooms').select('players_status, heartbeats').eq('id', roomId).maybeSingle();
+                if (data) {
+                    let ps = data.players_status || {};
+                    let hb = data.heartbeats || {};
+                    delete ps[myNickname];
+                    delete hb[myNickname];
+                    await supabaseClient.from('rooms').update({ players_status: ps, heartbeats: hb }).eq('id', roomId);
+                }
+            } catch(e) {}
+            localStorage.removeItem(`bingo_nick_${roomId}`);
+            localStorage.removeItem(`bingo_isHost_${roomId}`);
+        }
+
+        // 브라우저 닫거나 새로고침 할 때 서버 목록에서 즉시 제거 시도 (sendBeacon 활용)
+        window.addEventListener('beforeunload', () => {
+            if (!roomId || !myNickname) return;
+            localStorage.removeItem(`bingo_nick_${roomId}`);
+            localStorage.removeItem(`bingo_isHost_${roomId}`);
+        });
 
         async function createRoom() {
             const nick = document.getElementById('host-nickname').value.trim();
@@ -256,9 +283,17 @@
 
             const initialPlayersObj = {};
             initialPlayersObj[myNickname] = false; 
+            const initialHeartbeats = {};
+            initialHeartbeats[myNickname] = Date.now();
 
             const { error } = await supabaseClient.from('rooms').insert([
-                { id: roomId, status: 'waiting', target_lines: targetLines, players_status: initialPlayersObj }
+                { 
+                    id: roomId, 
+                    status: 'waiting', 
+                    target_lines: targetLines, 
+                    players_status: initialPlayersObj,
+                    heartbeats: initialHeartbeats 
+                }
             ]);
 
             if (error) {
@@ -278,9 +313,9 @@
 
             updateWaitingRoomUI(initialPlayersObj);
             startSyncLoop();
+            startHeartbeat();
         }
 
-        // 참여자가 닉네임 입력 후 대기실로 들어갈 때 실행
         async function joinRoomWithNickname() {
             const nickInput = document.getElementById('guest-nickname').value.trim();
             if (!nickInput) {
@@ -303,11 +338,15 @@
 
             targetLines = data.target_lines || 3;
             let playersStatus = data.players_status || {};
+            let heartbeats = data.heartbeats || {};
             
-            if (!(myNickname in playersStatus)) {
-                playersStatus[myNickname] = false;
-                await supabaseClient.from('rooms').update({ players_status: playersStatus }).eq('id', roomId);
-            }
+            playersStatus[myNickname] = false;
+            heartbeats[myNickname] = Date.now();
+
+            await supabaseClient.from('rooms').update({ 
+                players_status: playersStatus,
+                heartbeats: heartbeats 
+            }).eq('id', roomId);
 
             document.getElementById('guest-setup-screen').style.display = 'none';
             document.getElementById('guest-waiting-msg').style.display = 'block';
@@ -315,13 +354,20 @@
 
             updateWaitingRoomUI(playersStatus);
             startSyncLoop();
+            startHeartbeat();
 
             if (data.status === 'playing') {
                 startTheGame();
             }
         }
 
-        async function saveMyWords() {
+        function checkIsReady() {
+            const rawText = document.getElementById('my-words').value;
+            let words = rawText.split(/[\n,]+/).map(w => w.trim()).filter(w => w.length > 0);
+            return words.length >= 25;
+        }
+
+        function updateMyWordStatusOnly() {
             const rawText = document.getElementById('my-words').value;
             let words = rawText.split(/[\n,]+/).map(w => w.trim()).filter(w => w.length > 0);
             const count = words.length;
@@ -335,17 +381,37 @@
                 statusIndicator.innerText = `작성된 단어: ${count} / 25개 (미완료 ❌)`;
                 statusIndicator.style.color = 'var(--danger)';
             }
+            saveMyWordsToSupabase();
+        }
 
-            if (roomId && myNickname) {
-                const { data } = await supabaseClient.from('rooms').select('players_status').eq('id', roomId).maybeSingle();
-                if (data && data.players_status) {
-                    let ps = data.players_status;
-                    ps[myNickname] = isReady;
-                    await supabaseClient.from('rooms').update({ players_status: ps }).eq('id', roomId);
-                }
+        async function saveMyWordsToSupabase() {
+            if (!roomId || !myNickname) return;
+            const isReady = checkIsReady();
+            const { data } = await supabaseClient.from('rooms').select('players_status').eq('id', roomId).maybeSingle();
+            if (data && data.players_status) {
+                let ps = data.players_status;
+                ps[myNickname] = isReady;
+                await supabaseClient.from('rooms').update({ players_status: ps }).eq('id', roomId);
             }
         }
 
+        // 생존 신고(Heartbeat) 함수: 2초마다 내 접속 상태를 갱신
+        function startHeartbeat() {
+            if (heartbeatInterval) clearInterval(heartbeatInterval);
+            heartbeatInterval = setInterval(async () => {
+                if (!roomId || !myNickname) return;
+                try {
+                    const { data } = await supabaseClient.from('rooms').select('heartbeats').eq('id', roomId).maybeSingle();
+                    if (data) {
+                        let hb = data.heartbeats || {};
+                        hb[myNickname] = Date.now();
+                        await supabaseClient.from('rooms').update({ heartbeats: hb }).eq('id', roomId);
+                    }
+                } catch(e) {}
+            }, 2000);
+        }
+
+        // 동기화 및 오프라인 플레이어 자동 청소 루프
         function startSyncLoop() {
             if (syncInterval) clearInterval(syncInterval);
             syncInterval = setInterval(async () => {
@@ -358,8 +424,29 @@
                     return;
                 }
 
-                if (data.players_status) {
-                    updateWaitingRoomUI(data.players_status);
+                let playersStatus = data.players_status || {};
+                let heartbeats = data.heartbeats || {};
+                let now = Date.now();
+                let updated = false;
+
+                // 5초 이상 하트비트 응답이 없는 플레이어는 퇴장한 것으로 간주하고 삭제
+                Object.keys(heartbeats).forEach(name => {
+                    if (now - heartbeats[name] > 5000) {
+                        delete heartbeats[name];
+                        delete playersStatus[name];
+                        updated = true;
+                    }
+                });
+
+                if (updated) {
+                    await supabaseClient.from('rooms').update({ 
+                        players_status: playersStatus, 
+                        heartbeats: heartbeats 
+                    }).eq('id', roomId);
+                }
+
+                if (playersStatus) {
+                    updateWaitingRoomUI(playersStatus);
                 }
 
                 if (data.status === 'playing' && document.getElementById('game-screen').style.display !== 'block') {
@@ -373,7 +460,7 @@
                 if (data.status === 'waiting' && document.getElementById('waiting-room-screen').style.display !== 'block' && document.getElementById('game-screen').style.display === 'block') {
                     resetToWaitingRoomUI();
                 }
-            }, 1000);
+            }, 1500);
         }
 
         function copyLink() {
@@ -424,9 +511,7 @@
         }
 
         async function startHostGame() {
-            const rawText = document.getElementById('my-words').value;
-            let words = rawText.split(/[\n,]+/).map(w => w.trim()).filter(w => w.length > 0);
-            if (words.length < 25) {
+            if (!checkIsReady()) {
                 alert('본인의 단어가 25개 미만입니다!');
                 return;
             }
@@ -520,8 +605,8 @@
                 subText.style.display = 'none';
             } else {
                 document.getElementById('winner-text').innerText = `🎉 승자: ${winnerName}님! 🎉`;
-                subText.style.display = 'block';
-                subText.innerText = '누군가 빙고를 완성했습니다!';
+                subTest.style.display = 'block';
+                subTest.innerText = '누군가 빙고를 완성했습니다!';
             }
 
             if (isHost) {
