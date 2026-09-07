@@ -3,9 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>실시간 커스텀 단어 빙고</title>
-    <!-- 수파베이스 JS 클라이언트 불러오기 -->
-    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <title>실시간 커스텀 단어 빙고 (독립형)</title>
     <style>
         :root {
             --bg-color: #1e1e24;
@@ -84,7 +82,7 @@
 </head>
 <body>
 
-    <h1>실시간 커스텀 단어 빙고</h1>
+    <h1>커스텀 단어 빙고</h1>
 
     <!-- 1. 첫 화면 (메인 선택) -->
     <div class="container" id="mode-select-screen">
@@ -137,7 +135,7 @@
         </div>
 
         <button id="host-start-btn" onclick="startHostGame()" style="display: none; background: var(--bingo-checked); margin-top: 10px;">게임 시작하기</button>
-        <p id="guest-waiting-msg" style="text-align: center; color: #a4b0be; font-size: 13px; margin-top: 10px; display: none;">방장이 게임을 시작하기를 기다리는 중...</p>
+        <p id="guest-waiting-msg" style="text-align: center; color: #a4b0be; font-size: 13px; margin-top: 10px; display: none;">게임 시작을 기다리는 중...</p>
     </div>
 
     <!-- 5. 실제 게임 플레이 화면 -->
@@ -160,20 +158,14 @@
     </div>
 
     <script>
-        // ======= [정확한 사용자 Supabase 정보 적용 완료] =======
-        const SUPABASE_URL = 'https://mlazabosisxkhnsjvwqo.supabase.co';
-        const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1sYXphYm9zaXN4a2huc2p2d3FvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODg3ODU1MjEsImV4cCI6MjEwNDM2MTUyMX0.RAXsRPOmPJ51nIGw1P1-1xU2gQzLD-Jeajg8JuUKgqk';
-        // ====================================================
-
-        const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-
         let myNickname = '';
         let isHost = false;
         let targetLines = 3;
         let roomId = '';
         let currentBoardWords = [];
+        let pollInterval = null;
 
-        window.onload = async function() {
+        window.onload = function() {
             const urlParams = new URLSearchParams(window.location.search);
             roomId = urlParams.get('room');
             const lines = urlParams.get('lines');
@@ -192,8 +184,8 @@
                 document.getElementById('guest-waiting-msg').style.display = 'block';
                 document.getElementById('waiting-room-screen').style.display = 'block';
 
-                await joinRoomAsGuest();
-                subscribeRealtime();
+                joinRoomAsGuestLocally();
+                startPolling();
             }
         };
 
@@ -210,10 +202,11 @@
         function backToMain() {
             document.querySelectorAll('.screen').forEach(el => el.style.display = 'none');
             document.getElementById('mode-select-screen').style.display = 'block';
+            if (pollInterval) clearInterval(pollInterval);
             window.history.replaceState({}, document.title, window.location.pathname);
         }
 
-        async function createRoom() {
+        function createRoom() {
             const nick = document.getElementById('host-nickname').value.trim();
             targetLines = parseInt(document.getElementById('target-lines-input').value) || 3;
 
@@ -223,14 +216,13 @@
             isHost = true;
             roomId = Math.random().toString(36).substring(2, 8);
 
-            const { error } = await supabaseClient.from('rooms').insert([
-                { id: roomId, status: 'waiting', target_lines: targetLines, players: [myNickname] }
-            ]);
-
-            if (error) {
-                alert('방 생성 실패: Supabase 설정이나 테이블(rooms) 상태를 확인해주세요.\n(에러: ' + error.message + ')');
-                return;
-            }
+            const roomData = {
+                status: 'waiting',
+                target_lines: targetLines,
+                players: [myNickname],
+                winner: null
+            };
+            localStorage.setItem('bingo_room_' + roomId, JSON.stringify(roomData));
 
             const shareUrl = `${window.location.origin}${window.location.pathname}?room=${roomId}&lines=${targetLines}`;
 
@@ -242,10 +234,10 @@
             document.getElementById('waiting-room-screen').style.display = 'block';
 
             updatePlayerListUI([myNickname]);
-            subscribeRealtime();
+            startPolling();
         }
 
-        async function enterRoomByLink() {
+        function enterRoomByLink() {
             const nick = document.getElementById('guest-nickname').value.trim();
             let linkInput = document.getElementById('invite-link-input').value.trim();
 
@@ -277,51 +269,48 @@
             document.getElementById('guest-waiting-msg').style.display = 'block';
             document.getElementById('waiting-room-screen').style.display = 'block';
 
-            await joinRoomAsGuest();
-            subscribeRealtime();
+            joinRoomAsGuestLocally();
+            startPolling();
         }
 
-        async function joinRoomAsGuest() {
-            const { data, error } = await supabaseClient.from('rooms').select('*').eq('id', roomId).single();
-            
-            if (error || !data) {
-                alert('존재하지 않거나 만료된 방입니다.');
+        function joinRoomAsGuestLocally() {
+            let roomStr = localStorage.getItem('bingo_room_' + roomId);
+            if (!roomStr) {
+                alert('존재하지 않거나 만료된 방입니다. (같은 기기/브라우저 내에서만 테스트 가능합니다)');
                 window.location.href = window.location.pathname;
                 return;
             }
 
-            targetLines = data.target_lines || 3;
-            let players = data.players || [];
-            if (!players.includes(myNickname)) {
-                players.push(myNickname);
-                await supabaseClient.from('rooms').update({ players: players }).eq('id', roomId);
+            let roomData = JSON.parse(roomStr);
+            targetLines = roomData.target_lines || 3;
+            if (!roomData.players.includes(myNickname)) {
+                roomData.players.push(myNickname);
+                localStorage.setItem('bingo_room_' + roomId, JSON.stringify(roomData));
             }
-            updatePlayerListUI(players);
+            updatePlayerListUI(roomData.players);
 
-            if (data.status === 'playing') {
+            if (roomData.status === 'playing') {
                 startTheGame();
             }
         }
 
-        function subscribeRealtime() {
-            supabaseClient
-                .channel('room_channel_' + roomId)
-                .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'rooms', filter: `id=eq.${roomId}` }, (payload) => {
-                    const newData = payload.new;
-                    
-                    if (newData.players) {
-                        updatePlayerListUI(newData.players);
-                    }
+        function startPolling() {
+            if (pollInterval) clearInterval(pollInterval);
+            pollInterval = setInterval(() => {
+                let roomStr = localStorage.getItem('bingo_room_' + roomId);
+                if (!roomStr) return;
+                let roomData = JSON.parse(roomStr);
 
-                    if (newData.status === 'playing') {
-                        startTheGame();
-                    }
-
-                    if (newData.status === 'gameover') {
-                        showGameOver(newData.winner);
-                    }
-                })
-                .subscribe();
+                if (roomData.players) {
+                    updatePlayerListUI(roomData.players);
+                }
+                if (roomData.status === 'playing' && document.getElementById('game-screen').style.display !== 'block') {
+                    startTheGame();
+                }
+                if (roomData.status === 'gameover' && roomData.winner) {
+                    showGameOver(roomData.winner);
+                }
+            }, 1000);
         }
 
         function copyLink() {
@@ -351,7 +340,7 @@
             });
         }
 
-        async function startHostGame() {
+        function startHostGame() {
             const rawText = document.getElementById('my-words').value;
             let words = rawText.split(/[\n,]+/).map(w => w.trim()).filter(w => w.length > 0);
 
@@ -360,7 +349,13 @@
                 return;
             }
 
-            await supabaseClient.from('rooms').update({ status: 'playing' }).eq('id', roomId);
+            let roomStr = localStorage.getItem('bingo_room_' + roomId);
+            if (roomStr) {
+                let roomData = JSON.parse(roomStr);
+                roomData.status = 'playing';
+                localStorage.setItem('bingo_room_' + roomId, JSON.stringify(roomData));
+            }
+            startTheGame();
         }
 
         function startTheGame() {
@@ -426,16 +421,19 @@
             }
         }
 
-        async function claimBingo() {
-            await supabaseClient.from('rooms').update({ 
-                status: 'gameover', 
-                winner: myNickname 
-            }).eq('id', roomId);
-            
+        function claimBingo() {
+            let roomStr = localStorage.getItem('bingo_room_' + roomId);
+            if (roomStr) {
+                let roomData = JSON.parse(roomStr);
+                roomData.status = 'gameover';
+                roomData.winner = myNickname;
+                localStorage.setItem('bingo_room_' + roomId, JSON.stringify(roomData));
+            }
             showGameOver(myNickname);
         }
 
         function showGameOver(winnerName) {
+            if (pollInterval) clearInterval(pollInterval);
             document.getElementById('game-over-overlay').style.display = 'flex';
             document.getElementById('winner-text').innerText = `🎉 승자: ${winnerName}님! 🎉`;
         }
