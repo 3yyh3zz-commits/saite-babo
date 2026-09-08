@@ -153,9 +153,9 @@
 
         <div style="margin-top: 15px;">
             <label style="font-size: 13px; color: #a4b0be;">내 빙고 단어 입력 (25개 이상, 엔터/콤마 구분)</label>
-            <textarea id="my-words" rows="4" placeholder="원하는 단어들을 직접 입력해주세요 (25개 이상)" oninput="updateMyWordStatusOnly()" onblur="saveMyWordsToSupabase()"></textarea>
+            <textarea id="my-words" rows="4" placeholder="원하는 단어들을 직접 입력해주세요 (25개 이상)" oninput="updateMyWordStatusOnly()"></textarea>
             <p id="word-count-status" style="font-size: 12px; color: #ff4757; margin-top: -8px; margin-bottom: 10px;">작성된 단어: 0 / 25개 (미완료)</p>
-            <button onclick="saveMyWordsToSupabase()" style="background: #3d3d4e; font-size: 13px; padding: 8px; margin-bottom: 5px;">💾 단어 서버에 저장/동기화하기</button>
+            <button onclick="saveMyWordsToSupabase()" style="background: var(--bingo-checked); font-size: 14px; padding: 10px; margin-bottom: 5px;">✅ 작성완료</button>
         </div>
 
         <button id="host-start-btn" onclick="startHostGame()" disabled style="background: var(--bingo-checked); margin-top: 10px; display: none;">모든 인원이 단어를 작성해야 시작 가능</button>
@@ -511,7 +511,10 @@
 
         window.saveMyWordsToSupabase = async function() {
             if (!roomId || !myNickname || !supabaseClient) return;
-            const isReady = checkIsReady();
+            if (!checkIsReady()) {
+                alert('단어를 25개 이상 작성해야 작성완료를 할 수 있습니다!');
+                return;
+            }
             const rawText = document.getElementById('my-words').value;
             let words = rawText.split(/[\n,]+/).map(w => w.trim()).filter(w => w.length > 0);
 
@@ -519,13 +522,13 @@
             if (data) {
                 let ps = data.players_status || {};
                 let pw = data.player_words || {};
-                ps[myNickname] = isReady;
+                ps[myNickname] = true;
                 pw[myNickname] = words;
                 const { error } = await supabaseClient.from('rooms').update({ players_status: ps, player_words: pw }).eq('id', roomId);
                 if (error) {
-                    console.error("서버 동기화 실패:", error.message);
+                    alert('저장 실패: ' + error.message);
                 } else {
-                    alert('단어가 서버에 성공적으로 동기화되었습니다!');
+                    alert('작성 완료 처리가 반영되었습니다!');
                 }
             }
         };
@@ -660,24 +663,30 @@
         async function getValidClue(roomData) {
             let playerWordsObj = roomData.player_words || {};
             let allWords = [];
+            
+            // 모든 참가자들이 작성한 단어들을 모음
             Object.values(playerWordsObj).forEach(arr => {
                 if (Array.isArray(arr)) allWords.push(...arr);
             });
             
+            // 방장 자신의 입력창 단어도 비상용으로 포함
             const rawText = document.getElementById('my-words').value;
             const myWordsArr = rawText.split(/[\n,]+/).map(w => w.trim()).filter(w => w.length > 0);
             allWords = [...new Set([...allWords, ...myWordsArr])];
 
             let usedClues = roomData.used_clues || [];
+            // 이미 사용된 제시어를 제외하고 남은 단어 목록 추출
             let available = allWords.filter(w => !usedClues.includes(w));
 
-            if (available.length === 0) {
+            // 만약 모든 단어가 소진되었다면 used_clues를 초기화하여 재사용 가능하게 함
+            if (available.length === 0 && allWords.length > 0) {
                 await supabaseClient.from('rooms').update({ used_clues: [] }).eq('id', roomId);
                 available = allWords;
             }
 
             if (available.length === 0) return null;
 
+            // 남은 단어들 중 무작위로 하나 추출
             return available[Math.floor(Math.random() * available.length)];
         }
 
