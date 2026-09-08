@@ -4,7 +4,6 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>실시간 커스텀 단어 빙고</title>
-    <!-- 모듈 방식 CDN 적용으로 추적 방지 및 스크립트 로드 오류 완벽 회피 -->
     <script type="module">
         import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm';
         import { GoogleGenAI } from 'https://esm.run/@google/genai';
@@ -140,7 +139,7 @@
             <p style="font-size: 13px; color: #a4b0be; margin-bottom: 5px;">게임 주제</p>
             <!-- 방장 전용 주제 수정 폼 -->
             <div id="host-topic-area" style="display: none; gap: 6px; margin-bottom: 5px;">
-                <input type="text" id="room-topic-input" placeholder="예: 무한도전 명대사" style="margin-bottom: 0;">
+                <input type="text" id="room-topic-input" placeholder="예: 동물" style="margin-bottom: 0;">
                 <button onclick="updateRoomTopic()" style="width: 90px; margin-bottom: 0; padding: 0;">주제 저장</button>
             </div>
             <!-- 참여자 전용 주제 표시 뱃지 -->
@@ -154,8 +153,9 @@
 
         <div style="margin-top: 15px;">
             <label style="font-size: 13px; color: #a4b0be;">내 빙고 단어 입력 (25개 이상, 엔터/콤마 구분)</label>
-            <textarea id="my-words" rows="4" placeholder="원하는 단어들을 직접 입력해주세요 (25개 이상)" oninput="updateMyWordStatusOnly()"></textarea>
+            <textarea id="my-words" rows="4" placeholder="원하는 단어들을 직접 입력해주세요 (25개 이상)" oninput="updateMyWordStatusOnly()" onblur="saveMyWordsToSupabase()"></textarea>
             <p id="word-count-status" style="font-size: 12px; color: #ff4757; margin-top: -8px; margin-bottom: 10px;">작성된 단어: 0 / 25개 (미완료)</p>
+            <button onclick="saveMyWordsToSupabase()" style="background: #3d3d4e; font-size: 13px; padding: 8px; margin-bottom: 5px;">💾 단어 서버에 저장/동기화하기</button>
         </div>
 
         <button id="host-start-btn" onclick="startHostGame()" disabled style="background: var(--bingo-checked); margin-top: 10px; display: none;">모든 인원이 단어를 작성해야 시작 가능</button>
@@ -323,7 +323,6 @@
             }
         }
 
-        // 전역 window 객체에 직접 할당하여 onclick 에러 원천 차단
         window.showHostSetup = function() {
             document.getElementById('mode-select-screen').style.display = 'none';
             document.getElementById('host-setup-screen').style.display = 'block';
@@ -508,10 +507,9 @@
                 statusIndicator.innerText = `작성된 단어: ${count} / 25개 (미완료 ❌)`;
                 statusIndicator.style.color = 'var(--danger)';
             }
-            saveMyWordsToSupabase();
         };
 
-        async function saveMyWordsToSupabase() {
+        window.saveMyWordsToSupabase = async function() {
             if (!roomId || !myNickname || !supabaseClient) return;
             const isReady = checkIsReady();
             const rawText = document.getElementById('my-words').value;
@@ -523,9 +521,14 @@
                 let pw = data.player_words || {};
                 ps[myNickname] = isReady;
                 pw[myNickname] = words;
-                await supabaseClient.from('rooms').update({ players_status: ps, player_words: pw }).eq('id', roomId);
+                const { error } = await supabaseClient.from('rooms').update({ players_status: ps, player_words: pw }).eq('id', roomId);
+                if (error) {
+                    console.error("서버 동기화 실패:", error.message);
+                } else {
+                    alert('단어가 서버에 성공적으로 동기화되었습니다!');
+                }
             }
-        }
+        };
 
         function startHeartbeat() {
             if (heartbeatInterval) clearInterval(heartbeatInterval);
