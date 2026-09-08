@@ -72,7 +72,7 @@
         }
         .btn-secondary { background: #57606f; }
         .btn-secondary:hover { background: #747d8c; }
-        .btn-bingo { background: var(--danger); font-size: 16px; display: none; animation: pulse 1s infinite; width: 100%; }
+        .btn-bingo { background: var(--danger); font-size: 16px; display: none; animation: pulse 1s infinite; width: 100%; margin-top: 15px; }
         @keyframes pulse { 0% { transform: scale(1); } 50% { transform: scale(1.02); } 100% { transform: scale(1); } }
 
         .player-list {
@@ -81,42 +81,66 @@
         }
         .player-item { padding: 6px 0; border-bottom: 1px solid #2b2b36; font-size: 14px; display: flex; justify-content: space-between; align-items: center; }
 
-        /* 멀티 플레이어 미니 빙고판 대시보드 스타일 */
-        .all-players-container {
-            width: 100%; max-width: 900px;
+        /* 새로운 게임 화면 레이아웃 (좌측: 다른 인원들 미니 빙고, 우측: 내 메인 빙고판) */
+        .game-layout {
+            display: flex;
+            gap: 20px;
+            width: 100%;
+            max-width: 1100px;
+            box-sizing: border-box;
+            align-items: flex-start;
         }
-        .boards-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-            gap: 15px;
-            margin-bottom: 20px;
-        }
-        .mini-board-card {
+        .others-sidebar {
+            width: 260px;
             background: var(--card-bg);
             border: 1px solid var(--border-color);
-            border-radius: 10px;
-            padding: 12px;
+            border-radius: 12px;
+            padding: 15px;
+            box-sizing: border-box;
+            max-height: 80vh;
+            overflow-y: auto;
+        }
+        .main-game-area {
+            flex: 1;
+            background: var(--card-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            padding: 25px;
+            box-sizing: border-box;
+        }
+
+        /* 미니 빙고판 스타일 (좌측 사이드바용) */
+        .mini-boards-list {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+        .mini-board-card {
+            background: #1a1a21;
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: 10px;
             box-sizing: border-box;
         }
         .mini-board-header {
             display: flex;
             justify-content: space-between;
             align-items: center;
-            margin-bottom: 8px;
-            font-size: 13px;
+            margin-bottom: 6px;
+            font-size: 12px;
             font-weight: bold;
         }
         .mini-board {
             display: grid;
             grid-template-columns: repeat(5, 1fr);
-            gap: 3px;
+            gap: 2px;
             aspect-ratio: 1;
         }
         .mini-cell {
-            background: #1a1a21;
+            background: #2b2b36;
             border: 1px solid #333;
-            border-radius: 3px;
-            font-size: 7px;
+            border-radius: 2px;
+            font-size: 6px;
             display: flex;
             align-items: center;
             justify-content: center;
@@ -136,6 +160,16 @@
             display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%;
             background: rgba(0,0,0,0.85); z-index: 999;
             justify-content: center; align-items: center; flex-direction: column; text-align: center; padding: 20px;
+        }
+
+        @media (max-width: 800px) {
+            .game-layout {
+                flex-direction: column;
+            }
+            .others-sidebar {
+                width: 100%;
+                max-height: 250px;
+            }
         }
     </style>
 </head>
@@ -213,25 +247,39 @@
         <p id="guest-waiting-msg" style="text-align: center; color: #a4b0be; font-size: 13px; margin-top: 10px; display: none;">모든 인원이 단어를 작성하고 방장이 시작하기를 기다리는 중...</p>
     </div>
 
-    <!-- 게임 화면 -->
-    <div class="screen" id="game-screen" style="max-width: 900px;">
-        <div class="container" style="max-width: 100%;">
-            <div id="game-topic-display" style="font-size: 13px; color: #a4b0be; margin-bottom: 8px; text-align: center;">주제: -</div>
-            
-            <!-- 단어 제시 카드 영역 -->
-            <div style="background: #1a1a21; border: 1px solid var(--border-color); border-radius: 8px; padding: 15px; text-align: center; margin-bottom: 15px;">
-                <p style="font-size: 12px; color: #a4b0be; margin: 0 0 5px 0;">현재 제시어</p>
-                <h2 id="current-clue-display" style="color: var(--bingo-checked); margin: 0; font-size: 24px;">준비 중...</h2>
-                <button id="next-clue-btn" onclick="nextClue()" style="display: none; margin-top: 12px; background: var(--accent); margin-bottom: 0;">➡️ 다음 제시어 뽑기</button>
+    <!-- 게임 화면 (좌측: 다른 참여자 미니 빙고들, 우측: 내 메인 빙고판) -->
+    <div class="screen" id="game-screen" style="max-width: 1100px;">
+        <div class="game-layout">
+            <!-- 좌측 사이드바: 다른 참여자 현황 -->
+            <div class="others-sidebar">
+                <h4 style="margin: 0 0 10px 0; font-size: 14px; color: #f1f2f6; text-align: center;">👥 다른 플레이어 현황</h4>
+                <div class="mini-boards-list" id="others-boards-list">
+                    <!-- 다른 플레이어들의 미니 빙고판들이 여기에 렌더링됩니다 -->
+                </div>
             </div>
 
-            <!-- 전체 플레이어 빙고판 현황 그리드 -->
-            <h3 style="margin-bottom: 10px; font-size: 16px; color: #f1f2f6;">🎮 참여자 전체 빙고 현황</h3>
-            <div class="boards-grid" id="all-boards-grid">
-                <!-- 동적으로 다른 플레이어들의 미니 빙고판과 내 빙고판이 렌더링됩니다 -->
-            </div>
+            <!-- 우측 메인 영역: 내 빙고판 및 게임 진행 -->
+            <div class="main-game-area">
+                <div id="game-topic-display" style="font-size: 13px; color: #a4b0be; margin-bottom: 8px; text-align: center;">주제: -</div>
+                
+                <!-- 단어 제시 카드 영역 -->
+                <div style="background: #1a1a21; border: 1px solid var(--border-color); border-radius: 8px; padding: 15px; text-align: center; margin-bottom: 15px;">
+                    <p style="font-size: 12px; color: #a4b0be; margin: 0 0 5px 0;">현재 제시어</p>
+                    <h2 id="current-clue-display" style="color: var(--bingo-checked); margin: 0; font-size: 24px;">준비 중...</h2>
+                    <button id="next-clue-btn" onclick="nextClue()" style="display: none; margin-top: 12px; background: var(--accent); margin-bottom: 0;">➡️ 다음 제시어 뽑기</button>
+                </div>
 
-            <button class="btn-bingo" id="bingo-claim-btn" onclick="claimBingo()">🚨 BINGO 완성! 게임 끝내기 🚨</button>
+                <!-- 내 메인 빙고판 -->
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                    <span style="font-size: 14px; font-weight: bold;">⭐ 내 메인 빙고판</span>
+                    <span id="my-lines-display" style="font-size: 14px; font-weight: bold; color: var(--bingo-checked);">0줄 완성</span>
+                </div>
+                <div class="bingo-board" id="my-main-bingo-board">
+                    <!-- 내 빙고판 25칸 -->
+                </div>
+
+                <button class="btn-bingo" id="bingo-claim-btn" onclick="claimBingo()">🚨 BINGO 완성! 게임 끝내기 🚨</button>
+            </div>
         </div>
     </div>
 
@@ -667,8 +715,7 @@
                     if (document.getElementById('game-screen').style.display !== 'block') {
                         startTheGame(data.current_clue);
                     } else {
-                        // 게임 진행 중일 때 전체 플레이어들의 빙고판 및 체크 현황 렌더링 갱신
-                        renderAllPlayersBoards(data);
+                        renderGameScreens(data);
                     }
                 }
 
@@ -830,9 +877,8 @@
             myCheckedIndices[index] = !myCheckedIndices[index];
             syncMyChecksToSupabase();
             
-            // 로컬 UI 즉시 갱신을 위해 데이터 객체를 가져와 렌더링 호출
             supabaseClient.from('rooms').select('*').eq('id', roomId).maybeSingle().then(({ data }) => {
-                if (data) renderAllPlayersBoards(data);
+                if (data) renderGameScreens(data);
             });
         }
 
@@ -848,52 +894,72 @@
             }
 
             let lines = 0;
-            // Rows
             for(let i=0; i<5; i++) {
                 if(grid[i].every(val => val)) lines++;
             }
-            // Cols
             for(let j=0; j<5; j++) {
                 if([0,1,2,3,4].every(i => grid[i][j])) lines++;
             }
-            // Diagonals
             if([0,1,2,3,4].every(i => grid[i][i])) lines++;
             if([0,1,2,3,4].every(i => grid[i][4-i])) lines++;
 
             return lines;
         }
 
-        function renderAllPlayersBoards(roomData) {
-            const gridContainer = document.getElementById('all-boards-grid');
-            gridContainer.innerHTML = '';
-
+        function renderGameScreens(roomData) {
             let playerWordsObj = roomData.player_words || {};
             let playerChecksObj = roomData.player_checks || {};
             let playersStatus = roomData.players_status || {};
+            let target = roomData.target_lines || 3;
+
+            // 1. 우측 메인 내 빙고판 렌더링
+            const mainBoardContainer = document.getElementById('my-main-bingo-board');
+            mainBoardContainer.innerHTML = '';
+
+            currentBoardWords.forEach((word, idx) => {
+                const cell = document.createElement('div');
+                cell.className = 'bingo-cell';
+                if (myCheckedIndices[idx]) cell.classList.add('checked');
+                cell.innerText = word;
+                cell.onclick = () => toggleCell(idx);
+                mainBoardContainer.appendChild(cell);
+            });
+
+            let myLines = calculateBingoLines(myCheckedIndices, currentBoardWords);
+            document.getElementById('my-lines-display').innerText = `${myLines}줄 완성 (목표: ${target}줄)`;
+
+            if (myLines >= target) {
+                document.getElementById('bingo-claim-btn').style.display = 'block';
+            } else {
+                document.getElementById('bingo-claim-btn').style.display = 'none';
+            }
+
+            // 2. 좌측 사이드바: 나를 제외한 다른 플레이어들 미니 빙고판 렌더링
+            const othersListContainer = document.getElementById('others-boards-list');
+            othersListContainer.innerHTML = '';
 
             let allPlayerNames = Object.keys(playersStatus);
+            let otherNames = allPlayerNames.filter(name => name !== myNickname);
 
-            allPlayerNames.forEach(pName => {
+            if (otherNames.length === 0) {
+                othersListContainer.innerHTML = `<p style="font-size: 12px; color: #a4b0be; text-align: center; margin: 10px 0;">다른 플레이어가 없습니다.</p>`;
+                return;
+            }
+
+            otherNames.forEach(pName => {
                 let pWords = playerWordsObj[pName] || [];
                 while(pWords.length < 25) {
                     pWords.push(`빈칸${pWords.length + 1}`);
                 }
                 let pChecks = playerChecksObj[pName] || {};
-                let isMe = (pName === myNickname);
-
                 let linesCount = calculateBingoLines(pChecks, pWords);
-                let target = roomData.target_lines || 3;
 
                 const card = document.createElement('div');
                 card.className = 'mini-board-card';
-                if (isMe) {
-                    card.style.borderColor = 'var(--accent)';
-                    card.style.background = '#2c2c3b';
-                }
 
                 const header = document.createElement('div');
                 header.className = 'mini-board-header';
-                header.innerHTML = `<span>${isMe ? '⭐ ' : ''}${pName} ${isMe ? '(나)' : ''}</span> <span style="color: ${linesCount >= target ? 'var(--bingo-checked)' : 'var(--text-primary)'};">${linesCount}줄 완성</span>`;
+                header.innerHTML = `<span>${pName}</span> <span style="color: ${linesCount >= target ? 'var(--bingo-checked)' : 'var(--text-primary)'};">${linesCount}줄</span>`;
                 card.appendChild(header);
 
                 const boardDiv = document.createElement('div');
@@ -904,26 +970,12 @@
                     cell.className = 'mini-cell';
                     if (pChecks[idx]) cell.classList.add('checked');
                     cell.innerText = word;
-
-                    if (isMe) {
-                        cell.style.cursor = 'pointer';
-                        cell.onclick = () => toggleCell(idx);
-                    }
                     boardDiv.appendChild(cell);
                 });
 
                 card.appendChild(boardDiv);
-                gridContainer.appendChild(card);
+                othersListContainer.appendChild(card);
             });
-
-            // 내 빙고 줄 수 계산해서 BINGO 버튼 노출 여부 결정
-            let myLines = calculateBingoLines(myCheckedIndices, currentBoardWords);
-            let target = roomData.target_lines || 3;
-            if (myLines >= target) {
-                document.getElementById('bingo-claim-btn').style.display = 'block';
-            } else {
-                document.getElementById('bingo-claim-btn').style.display = 'none';
-            }
         }
 
         window.claimBingo = async function() {
