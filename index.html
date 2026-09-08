@@ -660,36 +660,17 @@
             Object.values(playerWordsObj).forEach(arr => {
                 if (Array.isArray(arr)) allWords.push(...arr);
             });
-            allWords = [...new Set(allWords)];
+            
+            const rawText = document.getElementById('my-words').value;
+            const myWordsArr = rawText.split(/[\n,]+/).map(w => w.trim()).filter(w => w.length > 0);
+            allWords = [...new Set([...allWords, ...myWordsArr])];
 
             let usedClues = roomData.used_clues || [];
             let available = allWords.filter(w => !usedClues.includes(w));
 
-            if (available.length === 0) return null;
-
-            if (genAIClient && gameTopic && gameTopic !== '자유 주제') {
-                try {
-                    const model = genAIClient.getGenerativeModel({ model: 'gemini-2.5-flash' });
-                    const prompt = `다음 단어들 중에서 게임 주제("${gameTopic}")와 관련이 있거나 어울리는 단어들만 골라주세요. 
-단어 목록: ${JSON.stringify(available)}
-규칙: 
-1. 반드시 위 단어 목록에 있는 단어 그대로만 선택해야 합니다.
-2. 결과는 관련 있는 단어들만 포함하는 JSON 배열 형태로만 출력해주세요 (예: ["단어1", "단어2"]). 다른 설명이나 마크다운 백틱 없이 배열만 출력하세요.`;
-
-                    const result = await model.generateContent(prompt);
-                    let text = result.response.text().trim();
-                    text = text.replace(/```json/g, '').replace(/```/g, '').trim();
-                    let filtered = JSON.parse(text);
-                    if (Array.isArray(filtered) && filtered.length > 0) {
-                        available = available.filter(w => filtered.includes(w));
-                    }
-                } catch (e) {
-                    console.error("AI 필터링 오류, 기본 풀 사용:", e);
-                }
-            }
-
             if (available.length === 0) {
-                available = allWords.filter(w => !usedClues.includes(w));
+                await supabaseClient.from('rooms').update({ used_clues: [] }).eq('id', roomId);
+                available = allWords;
             }
 
             if (available.length === 0) return null;
