@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>실시간 커스텀 단어 빙고</title>
+    <title>슭크크에바찹스틱똥꼬아저씨랑 함께 하는 빙고게임🥵</title>
     <script type="module">
         import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm';
         import { GoogleGenAI } from 'https://esm.run/@google/genai';
@@ -90,37 +90,37 @@
 </head>
 <body>
 
-    <h1>실시간 커스텀 단어 빙고</h1>
+    <h1>슭크크에바찹스틱똥꼬아저씨랑 함께 하는 빙고게임🥵</h1>
 
     <!-- 메인 화면 -->
     <div class="container" id="mode-select-screen">
-        <h3>게임 모드</h3>
-        <button onclick="showHostSetup()">방 만들기</button>
+        <h3>곤듀야 사랑해❤️</h3>
+        <button onclick="showHostSetup()">방 만들기@잇;;</button>
         <p style="font-size: 12px; color: #a4b0be; text-align: center; margin-top: 5px;">참여자는 공유받은 링크를 통해 접속할 수 있습니다.</p>
     </div>
 
     <!-- 방장 설정 화면 -->
     <div class="container screen" id="host-setup-screen">
-        <h3>방 만들기 (방장)</h3>
+        <h3>방 만들기@잇;;</h3>
         <label style="font-size: 13px; color: #a4b0be;">방장 닉네임</label>
-        <input type="text" id="host-nickname" placeholder="닉네임 입력">
+        <input type="text" id="host-nickname" placeholder="닉네임 입력하@기잇;;">
 
         <label style="font-size: 13px; color: #a4b0be;">목표 빙고 줄 수</label>
         <input type="number" id="target-lines-input" value="3" min="1" max="12">
         
-        <button onclick="createRoom()">랜덤 링크 생성 및 방 들어가기</button>
+        <button onclick="createRoom()">방 생성하기@잇;;</button>
         <button class="btn-secondary" onclick="backToMain()">뒤로 가기</button>
     </div>
 
     <!-- 참여자 닉네임 입력 화면 -->
     <div class="container screen" id="guest-setup-screen">
         <h3>게임 참여하기</h3>
-        <p style="font-size: 13px; color: #a4b0be; margin-bottom: 15px;">초대받은 빙고 방에 입장합니다. 사용할 닉네임을 입력해주세요!</p>
+        <p style="font-size: 13px; color: #a4b0be; margin-bottom: 15px;">초대받은 빙고 방에 입장합니다. 사용할 닉네임을 입력해주세요옷!</p>
         
         <label style="font-size: 13px; color: #a4b0be;">내 닉네임</label>
-        <input type="text" id="guest-nickname" placeholder="닉네임 입력">
+        <input type="text" id="guest-nickname" placeholder="닉네임 입력하기@잇;;">
         
-        <button onclick="joinRoomWithNickname()">대기실 들어가기</button>
+        <button onclick="joinRoomWithNickname()">대기실 들어가기@잇;;</button>
     </div>
 
     <!-- 대기실 화면 -->
@@ -131,7 +131,7 @@
         <div id="share-link-area" style="margin-bottom: 15px; display: none;">
             <p style="font-size: 13px; color: #a4b0be; margin-bottom: 5px;">초대 링크</p>
             <input type="text" id="share-link-input" readonly style="background: #111; color: #2ed573; text-align: center; font-weight: bold; margin-bottom: 8px;">
-            <button onclick="copyLink()" style="margin-bottom: 10px;">링크 복사하기</button>
+            <button onclick="copyLink()" style="margin-bottom: 10px;">링크 복사하기@잇;;</button>
         </div>
 
         <!-- 주제 설정/표시 영역 -->
@@ -140,7 +140,7 @@
             <!-- 방장 전용 주제 수정 폼 -->
             <div id="host-topic-area" style="display: none; gap: 6px; margin-bottom: 5px;">
                 <input type="text" id="room-topic-input" placeholder="예: 동물" style="margin-bottom: 0;">
-                <button onclick="updateRoomTopic()" style="width: 90px; margin-bottom: 0; padding: 0;">주제 저장</button>
+                <button onclick="updateRoomTopic()" style="width: 90px; margin-bottom: 0; padding: 0;">변경</button>
             </div>
             <!-- 참여자 전용 주제 표시 뱃지 -->
             <div id="guest-topic-badge" style="background: #1a1a21; border: 1px solid var(--accent); padding: 12px; border-radius: 6px; text-align: center; font-weight: bold; color: var(--accent); display: none;">
@@ -515,7 +515,7 @@
         window.saveMyWordsToSupabase = async function() {
             if (!roomId || !myNickname || !supabaseClient) return;
             if (!checkIsReady()) {
-                alert('단어를 25개 이상 작성해야 작성완료를 할 수 있습니다!');
+                alert('단어를 25개 작성해야 작성완료를 할 수 있습니다!');
                 return;
             }
             const rawText = document.getElementById('my-words').value;
@@ -531,7 +531,7 @@
                 if (error) {
                     alert('저장 실패: ' + error.message);
                 } else {
-                    alert('작성 완료 처리가 반영되었습니다!');
+                    alert('작성 완료옷!');
                 }
             }
         };
@@ -655,7 +655,7 @@
                 const startBtn = document.getElementById('host-start-btn');
                 if (allReady && playerNames.length > 0) {
                     startBtn.disabled = false;
-                    startBtn.innerText = '게임 시작하기!';
+                    startBtn.innerText = '게임 시작하기@잇;;';
                 } else {
                     startBtn.disabled = true;
                     startBtn.innerText = '모든 인원이 단어를 작성해야 시작 가능';
@@ -826,12 +826,12 @@
             const gameOverBtn = document.getElementById('game-over-btn');
 
             if (winnerName === myNickname) {
-                document.getElementById('winner-text').innerText = `🎉 승리 추카!! 🎉`;
+                document.getElementById('winner-text').innerText = `🎉 BINGO! 🎉`;
                 subText.style.display = 'none';
             } else {
                 document.getElementById('winner-text').innerText = `🎉 승자: ${winnerName}님! 🎉`;
                 subText.style.display = 'block';
-                subText.innerText = '누군가 빙고를 완성했습니다!';
+                subText.innerText = '게임 종료옷!';
             }
 
             if (isHost) {
