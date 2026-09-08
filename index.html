@@ -81,6 +81,57 @@
         }
         .player-item { padding: 6px 0; border-bottom: 1px solid #2b2b36; font-size: 14px; display: flex; justify-content: space-between; align-items: center; }
 
+        /* 멀티 플레이어 미니 빙고판 대시보드 스타일 */
+        .all-players-container {
+            width: 100%; max-width: 900px;
+        }
+        .boards-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+        .mini-board-card {
+            background: var(--card-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 10px;
+            padding: 12px;
+            box-sizing: border-box;
+        }
+        .mini-board-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 8px;
+            font-size: 13px;
+            font-weight: bold;
+        }
+        .mini-board {
+            display: grid;
+            grid-template-columns: repeat(5, 1fr);
+            gap: 3px;
+            aspect-ratio: 1;
+        }
+        .mini-cell {
+            background: #1a1a21;
+            border: 1px solid #333;
+            border-radius: 3px;
+            font-size: 7px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+            padding: 1px;
+            color: #a4b0be;
+            overflow: hidden;
+            word-break: break-all;
+        }
+        .mini-cell.checked {
+            background: var(--bingo-checked);
+            color: white;
+            text-decoration: line-through;
+        }
+
         #game-over-overlay {
             display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%;
             background: rgba(0,0,0,0.85); z-index: 999;
@@ -163,7 +214,7 @@
     </div>
 
     <!-- 게임 화면 -->
-    <div class="screen" id="game-screen">
+    <div class="screen" id="game-screen" style="max-width: 900px;">
         <div class="container" style="max-width: 100%;">
             <div id="game-topic-display" style="font-size: 13px; color: #a4b0be; margin-bottom: 8px; text-align: center;">주제: -</div>
             
@@ -174,11 +225,12 @@
                 <button id="next-clue-btn" onclick="nextClue()" style="display: none; margin-top: 12px; background: var(--accent); margin-bottom: 0;">➡️ 다음 제시어 뽑기</button>
             </div>
 
-            <div class="status-bar">
-                <span id="player-title">빙고판</span>
-                <span id="bingo-status" style="color: var(--bingo-checked);">완성된 줄: 0줄</span>
+            <!-- 전체 플레이어 빙고판 현황 그리드 -->
+            <h3 style="margin-bottom: 10px; font-size: 16px; color: #f1f2f6;">🎮 참여자 전체 빙고 현황</h3>
+            <div class="boards-grid" id="all-boards-grid">
+                <!-- 동적으로 다른 플레이어들의 미니 빙고판과 내 빙고판이 렌더링됩니다 -->
             </div>
-            <div class="bingo-board" id="board"></div>
+
             <button class="btn-bingo" id="bingo-claim-btn" onclick="claimBingo()">🚨 BINGO 완성! 게임 끝내기 🚨</button>
         </div>
     </div>
@@ -212,6 +264,7 @@
         let currentBoardWords = [];
         let syncInterval = null;
         let heartbeatInterval = null;
+        let myCheckedIndices = {};
 
         function initClients() {
             if (window.createClient) {
@@ -340,15 +393,17 @@
         async function clearSessionData() {
             if (!roomId || !myNickname || !supabaseClient) return;
             try {
-                const { data } = await supabaseClient.from('rooms').select('players_status, heartbeats, player_words').eq('id', roomId).maybeSingle();
+                const { data } = await supabaseClient.from('rooms').select('players_status, heartbeats, player_words, player_checks').eq('id', roomId).maybeSingle();
                 if (data) {
                     let ps = data.players_status || {};
                     let hb = data.heartbeats || {};
                     let pw = data.player_words || {};
+                    let pc = data.player_checks || {};
                     delete ps[myNickname];
                     delete hb[myNickname];
                     delete pw[myNickname];
-                    await supabaseClient.from('rooms').update({ players_status: ps, heartbeats: hb, player_words: pw }).eq('id', roomId);
+                    delete pc[myNickname];
+                    await supabaseClient.from('rooms').update({ players_status: ps, heartbeats: hb, player_words: pw, player_checks: pc }).eq('id', roomId);
                 }
             } catch(e) {}
             localStorage.removeItem(`bingo_nick_${roomId}`);
@@ -389,6 +444,7 @@
                     players_status: initialPlayersObj,
                     heartbeats: initialHeartbeats,
                     player_words: {},
+                    player_checks: {},
                     current_clue: '시작 대기 중',
                     used_clues: []
                 }
@@ -586,11 +642,16 @@
 
                 if (updated) {
                     let pw = data.player_words || {};
-                    Object.keys(heartbeats).forEach(name => { delete pw[name]; });
+                    let pc = data.player_checks || {};
+                    Object.keys(heartbeats).forEach(name => { 
+                        delete pw[name]; 
+                        delete pc[name];
+                    });
                     await supabaseClient.from('rooms').update({ 
                         players_status: playersStatus, 
                         heartbeats: heartbeats,
-                        player_words: pw
+                        player_words: pw,
+                        player_checks: pc
                     }).eq('id', roomId);
                 }
 
@@ -602,8 +663,13 @@
                     document.getElementById('current-clue-display').innerText = data.current_clue;
                 }
 
-                if (data.status === 'playing' && document.getElementById('game-screen').style.display !== 'block') {
-                    startTheGame(data.current_clue);
+                if (data.status === 'playing') {
+                    if (document.getElementById('game-screen').style.display !== 'block') {
+                        startTheGame(data.current_clue);
+                    } else {
+                        // 게임 진행 중일 때 전체 플레이어들의 빙고판 및 체크 현황 렌더링 갱신
+                        renderAllPlayersBoards(data);
+                    }
                 }
 
                 if (data.status === 'gameover' && data.winner && document.getElementById('game-over-overlay').style.display !== 'flex') {
@@ -734,48 +800,49 @@
             if (isHost) {
                 document.getElementById('next-clue-btn').style.display = 'block';
             }
-            document.getElementById('player-title').innerText = `${myNickname}의 빙고판`;
             document.getElementById('current-clue-display').innerText = clue || '준비 중...';
 
-            buildBingoBoard();
+            initMyBoardWords();
         }
 
-        function buildBingoBoard() {
+        function initMyBoardWords() {
             const rawText = document.getElementById('my-words').value;
             let words = rawText.split(/[\n,]+/).map(w => w.trim()).filter(w => w.length > 0);
             
-            // Shuffle or use first 25 words
             currentBoardWords = words.slice(0, 25);
             while(currentBoardWords.length < 25) {
                 currentBoardWords.push(`빈칸${currentBoardWords.length + 1}`);
             }
+            myCheckedIndices = {};
+        }
 
-            const boardDiv = document.getElementById('board');
-            boardDiv.innerHTML = '';
+        async function syncMyChecksToSupabase() {
+            if (!roomId || !myNickname || !supabaseClient) return;
+            const { data } = await supabaseClient.from('rooms').select('player_checks').eq('id', roomId).maybeSingle();
+            if (data) {
+                let pc = data.player_checks || {};
+                pc[myNickname] = myCheckedIndices;
+                await supabaseClient.from('rooms').update({ player_checks: pc }).eq('id', roomId);
+            }
+        }
 
-            currentBoardWords.forEach((word, index) => {
-                const cell = document.createElement('div');
-                cell.className = 'bingo-cell';
-                cell.innerText = word;
-                cell.dataset.index = index;
-                cell.onclick = () => toggleCell(cell);
-                boardDiv.appendChild(cell);
+        function toggleCell(index) {
+            myCheckedIndices[index] = !myCheckedIndices[index];
+            syncMyChecksToSupabase();
+            
+            // 로컬 UI 즉시 갱신을 위해 데이터 객체를 가져와 렌더링 호출
+            supabaseClient.from('rooms').select('*').eq('id', roomId).maybeSingle().then(({ data }) => {
+                if (data) renderAllPlayersBoards(data);
             });
-            updateBingoCount();
         }
 
-        function toggleCell(cell) {
-            cell.classList.toggle('checked');
-            updateBingoCount();
-        }
-
-        function updateBingoCount() {
-            const cells = document.querySelectorAll('.bingo-cell');
+        function calculateBingoLines(checkedObj, wordsArr) {
             let grid = [];
             for(let i=0; i<5; i++) {
                 let row = [];
                 for(let j=0; j<5; j++) {
-                    row.push(cells[i*5 + j].classList.contains('checked'));
+                    let idx = i*5 + j;
+                    row.push(!!checkedObj[idx]);
                 }
                 grid.push(row);
             }
@@ -793,9 +860,66 @@
             if([0,1,2,3,4].every(i => grid[i][i])) lines++;
             if([0,1,2,3,4].every(i => grid[i][4-i])) lines++;
 
-            document.getElementById('bingo-status').innerText = `완성된 줄: ${lines}줄`;
+            return lines;
+        }
 
-            if(lines >= targetLines) {
+        function renderAllPlayersBoards(roomData) {
+            const gridContainer = document.getElementById('all-boards-grid');
+            gridContainer.innerHTML = '';
+
+            let playerWordsObj = roomData.player_words || {};
+            let playerChecksObj = roomData.player_checks || {};
+            let playersStatus = roomData.players_status || {};
+
+            let allPlayerNames = Object.keys(playersStatus);
+
+            allPlayerNames.forEach(pName => {
+                let pWords = playerWordsObj[pName] || [];
+                while(pWords.length < 25) {
+                    pWords.push(`빈칸${pWords.length + 1}`);
+                }
+                let pChecks = playerChecksObj[pName] || {};
+                let isMe = (pName === myNickname);
+
+                let linesCount = calculateBingoLines(pChecks, pWords);
+                let target = roomData.target_lines || 3;
+
+                const card = document.createElement('div');
+                card.className = 'mini-board-card';
+                if (isMe) {
+                    card.style.borderColor = 'var(--accent)';
+                    card.style.background = '#2c2c3b';
+                }
+
+                const header = document.createElement('div');
+                header.className = 'mini-board-header';
+                header.innerHTML = `<span>${isMe ? '⭐ ' : ''}${pName} ${isMe ? '(나)' : ''}</span> <span style="color: ${linesCount >= target ? 'var(--bingo-checked)' : 'var(--text-primary)'};">${linesCount}줄 완성</span>`;
+                card.appendChild(header);
+
+                const boardDiv = document.createElement('div');
+                boardDiv.className = 'mini-board';
+
+                pWords.forEach((word, idx) => {
+                    const cell = document.createElement('div');
+                    cell.className = 'mini-cell';
+                    if (pChecks[idx]) cell.classList.add('checked');
+                    cell.innerText = word;
+
+                    if (isMe) {
+                        cell.style.cursor = 'pointer';
+                        cell.onclick = () => toggleCell(idx);
+                    }
+                    boardDiv.appendChild(cell);
+                });
+
+                card.appendChild(boardDiv);
+                gridContainer.appendChild(card);
+            });
+
+            // 내 빙고 줄 수 계산해서 BINGO 버튼 노출 여부 결정
+            let myLines = calculateBingoLines(myCheckedIndices, currentBoardWords);
+            let target = roomData.target_lines || 3;
+            if (myLines >= target) {
                 document.getElementById('bingo-claim-btn').style.display = 'block';
             } else {
                 document.getElementById('bingo-claim-btn').style.display = 'none';
@@ -830,7 +954,8 @@
                 status: 'waiting',
                 winner: null,
                 current_clue: '시작 대기 중',
-                used_clues: []
+                used_clues: [],
+                player_checks: {}
             }).eq('id', roomId);
         }
 
@@ -839,6 +964,7 @@
             document.getElementById('game-screen').style.display = 'none';
             document.getElementById('waiting-room-screen').style.display = 'block';
             document.getElementById('bingo-claim-btn').style.display = 'none';
+            myCheckedIndices = {};
         }
     </script>
 </body>
