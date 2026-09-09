@@ -203,7 +203,7 @@
     <!-- 참여자 닉네임 입력 화면 -->
     <div class="container screen" id="guest-setup-screen">
         <h3>게임 참여하기</h3>
-        <p style="font-size: 13px; color: #a4b0be; margin-bottom: 15px;">초대받은 빙고 방에 입장합니다. 사용할 닉네임을 입력해주세요옷!</p>
+        <p style="font-size: 13px; color: #a4b0be; margin-bottom: 15px;">초대받은 방에 입장합니다. 사용할 닉네임을 입력해주세요옷!</p>
         
         <label style="font-size: 13px; color: #a4b0be;">내 닉네임</label>
         <input type="text" id="guest-nickname" placeholder="닉네임 입력하기@잇;;">
@@ -281,7 +281,7 @@
                     <!-- 내 빙고판 25칸 -->
                 </div>
 
-                <button class="btn-bingo" id="bingo-claim-btn" onclick="claimBingo()">🚨 BINGO 완성! 게임 끝내기 🚨</button>
+                <button class="btn-bingo" id="bingo-claim-btn" onclick="claimBingo()">🚨 BINGO! 🚨</button>
             </div>
         </div>
     </div>
@@ -289,7 +289,7 @@
     <!-- 게임 오버 모달 -->
     <div id="game-over-overlay">
         <h2 id="winner-text" style="color: var(--bingo-checked); margin-bottom: 10px;"></h2>
-        <p id="winner-sub-text" style="color: #a4b0be; margin-bottom: 20px;">누군가 빙고를 완성했습니다!</p>
+        <p id="winner-sub-text" style="color: #a4b0be; margin-bottom: 20px;">다른 플레이어가 빙고를 완성했습니다!</p>
         <button id="game-over-btn" onclick="returnToWaitingRoom()" style="max-width: 250px; background: var(--bingo-checked); display: none;">다시하기</button>
     </div>
 
@@ -399,7 +399,7 @@
             const { data } = await supabaseClient.from('rooms').select('*').eq('id', roomId).maybeSingle();
             if (data) {
                 targetLines = data.target_lines || 3;
-                gameTopic = data.topic || '자유 주제';
+                gameTopic = data.topic || '사엉꽉';
                 
                 if (isHost) {
                     document.getElementById('room-topic-input').value = gameTopic;
@@ -472,7 +472,7 @@
             if (!nick) { alert('방장 닉네임을 입력해주세요!'); return; }
 
             targetLines = parseInt(document.getElementById('target-lines-input').value) || 3;
-            gameTopic = '자유 주제';
+            gameTopic = '사엉꽉';
 
             myNickname = nick;
             isHost = true;
@@ -526,7 +526,7 @@
 
         window.updateRoomTopic = async function() {
             if (!isHost || !supabaseClient) return;
-            const newTopic = document.getElementById('room-topic-input').value.trim() || '자유 주제';
+            const newTopic = document.getElementById('room-topic-input').value.trim() || '사엉꽉';
             const { error } = await supabaseClient.from('rooms').update({ topic: newTopic }).eq('id', roomId);
             if (error) {
                 alert('주제 업데이트 실패: ' + error.message);
@@ -559,7 +559,7 @@
             }
 
             targetLines = data.target_lines || 3;
-            gameTopic = data.topic || '자유 주제';
+            gameTopic = data.topic || '사엉꽉';
             document.getElementById('guest-topic-badge').innerText = `🎯 주제: ${gameTopic}`;
             updateGameTopicDisplay(gameTopic);
 
@@ -995,7 +995,7 @@
 
         function showGameOver(winnerName) {
             document.getElementById('winner-text').innerText = `🎉 우승자: ${winnerName} 🎉`;
-            document.getElementById('winner-sub-text').innerText = `${winnerName}님이 목표 빙고를 달성했습니다!`;
+            document.getElementById('winner-sub-text').innerText = `${winnerName}님이 목표 빙고 달성!`;
             document.getElementById('game-over-overlay').style.display = 'flex';
 
             if (isHost) {
