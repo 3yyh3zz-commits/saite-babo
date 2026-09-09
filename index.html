@@ -55,14 +55,17 @@
 
         .screen { display: none; width: 100%; max-width: 450px; }
         
+        /* 메인 빙고판 크기 조절 (지나치게 커지지 않도록 max-width 부여) */
         .bingo-board {
             display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; aspect-ratio: 1; margin-bottom: 15px;
+            max-width: 380px; width: 100%; margin-left: auto; margin-right: auto;
         }
         .bingo-cell {
             background: #1a1a21; border: 1px solid var(--border-color); border-radius: 6px;
             display: flex; align-items: center; justify-content: center;
             font-size: 11px; font-weight: bold; text-align: center; cursor: pointer; padding: 4px;
             user-select: none; transition: 0.1s; color: #dcdde1; word-break: break-all;
+            height: 100%; box-sizing: border-box;
         }
         .bingo-cell:not(.checked):hover { background: #3d3d4e; }
         .bingo-cell.checked { background: var(--bingo-checked); color: white; text-decoration: line-through; border-color: #26af5f; }
@@ -72,7 +75,7 @@
         }
         .btn-secondary { background: #57606f; }
         .btn-secondary:hover { background: #747d8c; }
-        .btn-bingo { background: var(--danger); font-size: 16px; display: none; animation: pulse 1s infinite; width: 100%; margin-top: 15px; }
+        .btn-bingo { background: var(--danger); font-size: 16px; display: none; animation: pulse 1s infinite; width: 100%; margin-top: 15px; max-width: 380px; margin-left: auto; margin-right: auto; }
         @keyframes pulse { 0% { transform: scale(1); } 50% { transform: scale(1.02); } 100% { transform: scale(1); } }
 
         .player-list {
@@ -81,12 +84,12 @@
         }
         .player-item { padding: 6px 0; border-bottom: 1px solid #2b2b36; font-size: 14px; display: flex; justify-content: space-between; align-items: center; }
 
-        /* 게임 화면 레이아웃 (좌측: 본인 제외 다른 참가자들 미니 빙고판, 우측: 내 메인 빙고판) */
+        /* 게임 화면 레이아웃 */
         .game-layout {
             display: flex;
             gap: 20px;
             width: 100%;
-            max-width: 1100px;
+            max-width: 1000px;
             box-sizing: border-box;
             align-items: flex-start;
         }
@@ -247,14 +250,14 @@
         <p id="guest-waiting-msg" style="text-align: center; color: #a4b0be; font-size: 13px; margin-top: 10px; display: none;">모든 인원이 단어를 작성하고 방장이 시작하기를 기다리는 중...</p>
     </div>
 
-    <!-- 게임 화면 (좌측: 본인 제외 다른 참가자들 미니 빙고, 우측: 내 메인 빙고판) -->
-    <div class="screen" id="game-screen" style="max-width: 1100px;">
+    <!-- 게임 화면 -->
+    <div class="screen" id="game-screen" style="max-width: 1000px;">
         <div class="game-layout">
-            <!-- 좌측 사이드바: 본인 제외 다른 플레이어들 현황 -->
+            <!-- 좌측 사이드바: 본인 제외 다른 참가자들 현황 -->
             <div class="others-sidebar">
                 <h4 style="margin: 0 0 10px 0; font-size: 14px; color: #f1f2f6; text-align: center;">👥 다른 참가자들 현황</h4>
                 <div class="mini-boards-list" id="others-boards-list">
-                    <!-- 본인 제외 다른 플레이어들의 미니 빙고판들이 여기에 렌더링됩니다 -->
+                    <!-- 다른 플레이어들의 미니 빙고판 -->
                 </div>
             </div>
 
@@ -263,14 +266,14 @@
                 <div id="game-topic-display" style="font-size: 13px; color: #a4b0be; margin-bottom: 8px; text-align: center;">주제: -</div>
                 
                 <!-- 단어 제시 카드 영역 -->
-                <div style="background: #1a1a21; border: 1px solid var(--border-color); border-radius: 8px; padding: 15px; text-align: center; margin-bottom: 15px;">
+                <div style="background: #1a1a21; border: 1px solid var(--border-color); border-radius: 8px; padding: 15px; text-align: center; margin-bottom: 15px; max-width: 380px; margin-left: auto; margin-right: auto;">
                     <p style="font-size: 12px; color: #a4b0be; margin: 0 0 5px 0;">현재 제시어</p>
-                    <h2 id="current-clue-display" style="color: var(--bingo-checked); margin: 0; font-size: 24px;">준비 중...</h2>
+                    <h2 id="current-clue-display" style="color: var(--bingo-checked); margin: 0; font-size: 22px;">준비 중...</h2>
                     <button id="next-clue-btn" onclick="nextClue()" style="display: none; margin-top: 12px; background: var(--accent); margin-bottom: 0;">➡️ 다음 제시어 뽑기</button>
                 </div>
 
                 <!-- 내 메인 빙고판 -->
-                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; max-width: 380px; margin-left: auto; margin-right: auto;">
                     <span style="font-size: 14px; font-weight: bold;">⭐ 내 메인 빙고판</span>
                     <span id="my-lines-display" style="font-size: 14px; font-weight: bold; color: var(--bingo-checked);">0줄 완성</span>
                 </div>
@@ -912,7 +915,7 @@
             let playersStatus = roomData.players_status || {};
             let target = roomData.target_lines || 3;
 
-            // 1. 우측 메인 영역: 내 빙고판 렌더링 (본인 화면이 가장 큼)
+            // 1. 우측 메인 내 빙고판 렌더링
             const mainBoardContainer = document.getElementById('my-main-bingo-board');
             mainBoardContainer.innerHTML = '';
 
@@ -934,7 +937,7 @@
                 document.getElementById('bingo-claim-btn').style.display = 'none';
             }
 
-            // 2. 좌측 사이드바: "본인을 제외한" 나머지 참가자들의 미니 빙고판 렌더링
+            // 2. 좌측 사이드바: 본인 제외 다른 참가자들 미니 빙고판 렌더링
             const othersListContainer = document.getElementById('others-boards-list');
             othersListContainer.innerHTML = '';
 
