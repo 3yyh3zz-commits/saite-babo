@@ -246,7 +246,7 @@
             <button onclick="saveMyWordsToSupabase()" style="background: var(--bingo-checked); font-size: 14px; padding: 10px; margin-bottom: 5px;">✅ 작성완료</button>
         </div>
 
-        <button id="host-start-btn" onclick="startHostGame()" disabled style="background: var(--bingo-checked); margin-top: 10px; display: none;">모든 인원이 단어를 작성해야 시작 가능</button>
+        <button id="host-start-btn" onclick="startHostGame()" disabled style="background: var(--bingo-checked); margin-top: 10px; display: none;">모든 인원이 작성완료해야 시작 가능</button>
         <p id="guest-waiting-msg" style="text-align: center; color: #a4b0be; font-size: 13px; margin-top: 10px; display: none;">모든 인원이 단어를 작성하고 방장이 시작하기를 기다리는 중...</p>
     </div>
 
@@ -274,7 +274,7 @@
 
                 <!-- 내 메인 빙고판 -->
                 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; max-width: 380px; margin-left: auto; margin-right: auto;">
-                    <span style="font-size: 14px; font-weight: bold;">⭐ 내 메인 빙고판</span>
+                    <span style="font-size: 14px; font-weight: bold;">⭐ 내 빙고판</span>
                     <span id="my-lines-display" style="font-size: 14px; font-weight: bold; color: var(--bingo-checked);">0줄 완성</span>
                 </div>
                 <div class="bingo-board" id="my-main-bingo-board">
