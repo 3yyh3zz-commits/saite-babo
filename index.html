@@ -81,7 +81,7 @@
         }
         .player-item { padding: 6px 0; border-bottom: 1px solid #2b2b36; font-size: 14px; display: flex; justify-content: space-between; align-items: center; }
 
-        /* 새로운 게임 화면 레이아웃 (좌측: 다른 인원들 미니 빙고, 우측: 내 메인 빙고판) */
+        /* 게임 화면 레이아웃 (좌측: 본인 제외 다른 참가자들 미니 빙고판, 우측: 내 메인 빙고판) */
         .game-layout {
             display: flex;
             gap: 20px;
@@ -247,14 +247,14 @@
         <p id="guest-waiting-msg" style="text-align: center; color: #a4b0be; font-size: 13px; margin-top: 10px; display: none;">모든 인원이 단어를 작성하고 방장이 시작하기를 기다리는 중...</p>
     </div>
 
-    <!-- 게임 화면 (좌측: 다른 참여자 미니 빙고들, 우측: 내 메인 빙고판) -->
+    <!-- 게임 화면 (좌측: 본인 제외 다른 참가자들 미니 빙고, 우측: 내 메인 빙고판) -->
     <div class="screen" id="game-screen" style="max-width: 1100px;">
         <div class="game-layout">
-            <!-- 좌측 사이드바: 다른 참여자 현황 -->
+            <!-- 좌측 사이드바: 본인 제외 다른 플레이어들 현황 -->
             <div class="others-sidebar">
-                <h4 style="margin: 0 0 10px 0; font-size: 14px; color: #f1f2f6; text-align: center;">👥 다른 플레이어 현황</h4>
+                <h4 style="margin: 0 0 10px 0; font-size: 14px; color: #f1f2f6; text-align: center;">👥 다른 참가자들 현황</h4>
                 <div class="mini-boards-list" id="others-boards-list">
-                    <!-- 다른 플레이어들의 미니 빙고판들이 여기에 렌더링됩니다 -->
+                    <!-- 본인 제외 다른 플레이어들의 미니 빙고판들이 여기에 렌더링됩니다 -->
                 </div>
             </div>
 
@@ -912,7 +912,7 @@
             let playersStatus = roomData.players_status || {};
             let target = roomData.target_lines || 3;
 
-            // 1. 우측 메인 내 빙고판 렌더링
+            // 1. 우측 메인 영역: 내 빙고판 렌더링 (본인 화면이 가장 큼)
             const mainBoardContainer = document.getElementById('my-main-bingo-board');
             mainBoardContainer.innerHTML = '';
 
@@ -934,7 +934,7 @@
                 document.getElementById('bingo-claim-btn').style.display = 'none';
             }
 
-            // 2. 좌측 사이드바: 나를 제외한 다른 플레이어들 미니 빙고판 렌더링
+            // 2. 좌측 사이드바: "본인을 제외한" 나머지 참가자들의 미니 빙고판 렌더링
             const othersListContainer = document.getElementById('others-boards-list');
             othersListContainer.innerHTML = '';
 
@@ -942,7 +942,7 @@
             let otherNames = allPlayerNames.filter(name => name !== myNickname);
 
             if (otherNames.length === 0) {
-                othersListContainer.innerHTML = `<p style="font-size: 12px; color: #a4b0be; text-align: center; margin: 10px 0;">다른 플레이어가 없습니다.</p>`;
+                othersListContainer.innerHTML = `<p style="font-size: 12px; color: #a4b0be; text-align: center; margin: 10px 0;">다른 참가자가 없습니다.</p>`;
                 return;
             }
 
